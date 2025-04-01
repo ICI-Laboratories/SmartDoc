@@ -5,6 +5,9 @@ import io
 import os
 import re
 import json
+import torch
+torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
+
 
 reader = easyocr.Reader(['en', 'es'], gpu=True)
 
@@ -101,35 +104,90 @@ def extract_pages_from_text(text: str):
     return pages
 
 def hierarchical_summary(pages, max_words=20000, chunk_size=5):
+    """
+    Genera un resumen jerárquico de las páginas de un documento.
+    
+    Args:
+        pages: Lista de tuplas (número_página, texto_página)
+        max_words: Número máximo de palabras para procesar directamente
+        chunk_size: Tamaño de los bloques para resumir
+        
+    Returns:
+        List: Lista de bloques con resúmenes
+    """
     from llm import generate_short_summary_with_lmstudio, summarize_chunk_with_lmstudio
+    
+    # Verificar que tengamos páginas para procesar
+    if not pages:
+        return []
+        
+    # Filtrar páginas vacías
+    pages = [(pnum, ptext) for pnum, ptext in pages if ptext.strip()]
+    
+    if not pages:
+        return []
+    
     total_text = "\n".join([p[1] for p in pages])
+    
+    # Si el documento es corto, procesar página por página
     if count_words(total_text) <= max_words:
         final_blocks = []
         for pnum, ptext in pages:
-            summary_data = generate_short_summary_with_lmstudio(ptext, "Document", 0)
+            # Verificar que la página tenga contenido
+            if not ptext.strip():
+                continue
+                
+            # Generar un pequeño resumen para cada página
+            doc_name = "Documento"  # Puedes personalizar esto si tienes el nombre del documento
+            summary_data = generate_short_summary_with_lmstudio(ptext, doc_name, pnum)
+            
             final_blocks.append({
                 "page": pnum,
                 "small_summary": summary_data.get("short_summary", "").strip()
             })
         return final_blocks
+    
+    # Para documentos largos, dividir en bloques y resumir cada bloque
     chunks = [pages[i:i+chunk_size] for i in range(0, len(pages), chunk_size)]
     chunk_summaries = []
+    
     for chunk in chunks:
+        # Verificar que el chunk tenga contenido
+        if not chunk:
+            continue
+            
+        # Resumir el bloque de páginas
         chunk_data = summarize_chunk_with_lmstudio(chunk)
-        chunk_summaries.append(chunk_data)
-    summarized_pages = []
-    for i, ch in enumerate(chunk_summaries):
-        if chunks[i]:
-            pnum = chunks[i][0][0]
-            summarized_pages.append((pnum, ch.get("summary", "")))
-    final_blocks = []
-    for pnum, summary_text in summarized_pages:
-        short_summary = generate_short_summary_with_lmstudio(summary_text, "Document", 0)
-        final_blocks.append({
-            "page": pnum,
-            "small_summary": short_summary.get("short_summary", "").strip()
-        })
-    return final_blocks
+        
+        # Verificar que obtuvimos un resumen
+        if "summary" in chunk_data and chunk_data["summary"].strip():
+            # Guardar el número de página inicial del bloque y su resumen
+            start_page = chunk[0][0]
+            end_page = chunk[-1][0]
+            chunk_summaries.append({
+                "start_page": start_page,
+                "end_page": end_page,
+                "summary": chunk_data.get("summary", "").strip()
+            })
+    
+    # Si no se pudo resumir por bloques, intentar un enfoque página por página
+    if not chunk_summaries:
+        final_blocks = []
+        for pnum, ptext in pages:
+            if not ptext.strip():
+                continue
+                
+            summary_data = generate_short_summary_with_lmstudio(ptext, "Documento", pnum)
+            
+            if "short_summary" in summary_data and summary_data["short_summary"].strip():
+                final_blocks.append({
+                    "page": pnum,
+                    "small_summary": summary_data.get("short_summary", "").strip()
+                })
+        return final_blocks
+    
+    # Si tenemos resúmenes de bloques, devolver esos
+    return chunk_summaries
 
 def save_hierarchical_summary(final_data, output_path: str) -> None:
     with open(output_path, "w", encoding="utf-8") as f:
