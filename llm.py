@@ -1,13 +1,14 @@
 import requests
 import json
 import streamlit as st
-from docs import get_classification_snippet, get_existing_categories
-
+from docs import get_classification_snippet, get_existing_categories, get_pages_text_by_numbers
 from typing import Tuple
+
+INFERENCE_SERVER_URL = "http://localhost:1234/v1/chat/completions"
 
 def classify_text_with_lmstudio(text: str, output_folder: str) -> Tuple[str, str]:
     """
-    Clasifica el texto en 'main_category' y 'sub_category' usando LM Studio.
+    Clasifica el texto en 'main_category' y 'sub_category' utilizando el servidor de inferencia.
     """
     categories_dict = get_existing_categories(output_folder)
     existing_structure = json.dumps(categories_dict, indent=4)
@@ -15,8 +16,7 @@ def classify_text_with_lmstudio(text: str, output_folder: str) -> Tuple[str, str
 
     prompt_instructions = (
         "Analiza el texto y categorízalo en 'main_category' y 'sub_category'. "
-        "Si es posible, utiliza alguna de las categorías o subcategorías existentes mostradas a continuación. "
-        "De lo contrario, crea una nueva categoría descriptiva. "
+        "Utiliza las categorías existentes si es posible, o crea una nueva categoría descriptiva. "
         "No uses nombres numéricos ni muy cortos.\n\n"
         f"Categorías existentes:\n{existing_structure}\n\n"
         f"Texto:\n{snippet}\n\n"
@@ -50,7 +50,7 @@ def classify_text_with_lmstudio(text: str, output_folder: str) -> Tuple[str, str
     }
 
     try:
-        response = requests.post("http://localhost:1234/v1/chat/completions", headers=headers, json=payload)
+        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
         if response.status_code == 200:
             generated_text = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             try:
@@ -66,16 +66,15 @@ def classify_text_with_lmstudio(text: str, output_folder: str) -> Tuple[str, str
                 st.error("No se pudo decodificar el JSON de la respuesta del LLM.")
                 return "Sin_Clasificar", "Sin_Subcategoria"
         else:
-            st.error(f"Error en la solicitud a LM Studio: {response.status_code}")
+            st.error(f"Error en la solicitud a Inference Server: {response.status_code} => {response.text}")
             return "Sin_Clasificar", "Sin_Subcategoria"
     except Exception as e:
-        st.error(f"Error al conectar con LM Studio: {e}")
+        st.error(f"Error al conectar con el servidor de inferencia: {e}")
         return "Sin_Clasificar", "Sin_Subcategoria"
-
 
 def summarize_chunk_with_lmstudio(pages):
     """
-    Resume un chunk de páginas utilizando LM Studio.
+    Resume un chunk de páginas utilizando el servidor de inferencia.
     """
     if not pages:
         return None
@@ -88,8 +87,8 @@ def summarize_chunk_with_lmstudio(pages):
 
     prompt = (
         f"Estas son las páginas {start_page} a {end_page} de un conjunto de artículos. "
-        "Por favor, elabora un resumen conciso en formato JSON que contenga los puntos más importantes, "
-        "manteniendo la referencia a las páginas incluidas.\n"
+        "Elabora un resumen conciso en formato JSON que contenga los puntos más importantes, "
+        "manteniendo la referencia a las páginas.\n"
         "Formato esperado:\n\n"
         "{\n"
         "   \"start_page\": <int>,\n"
@@ -126,7 +125,7 @@ def summarize_chunk_with_lmstudio(pages):
     }
 
     try:
-        response = requests.post("http://localhost:1234/v1/chat/completions", headers=headers, json=payload)
+        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
         if response.status_code == 200:
             generated_text = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             try:
@@ -142,19 +141,18 @@ def summarize_chunk_with_lmstudio(pages):
             return {
                 "start_page": start_page,
                 "end_page": end_page,
-                "summary": "Error en la solicitud al LLM."
+                "summary": f"Error en la solicitud al servidor de inferencia: {response.status_code}"
             }
     except Exception as e:
         return {
             "start_page": start_page,
             "end_page": end_page,
-            "summary": f"Error al conectar con LM Studio: {e}"
+            "summary": f"Error al conectar con el servidor de inferencia: {e}"
         }
-
 
 def chat_with_context(context: str, question: str) -> str:
     """
-    Permite chatear con el contenido resumido utilizando LM Studio.
+    Chatea con el contenido resumido usando el servidor de inferencia.
     """
     prompt = (
         "A continuación tienes un conjunto de páginas (resumidas si fue necesario). "
@@ -171,11 +169,112 @@ def chat_with_context(context: str, question: str) -> str:
     }
 
     try:
-        response = requests.post("http://localhost:1234/v1/chat/completions", headers=headers, json=payload)
+        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
         if response.status_code == 200:
             answer = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             return answer
         else:
-            return f"Error en la solicitud a LM Studio: {response.status_code}"
+            return f"Error en la solicitud al servidor de inferencia: {response.status_code} => {response.text}"
     except Exception as e:
-        return f"Error al conectar con LM Studio: {e}"
+        return f"Error al conectar con el servidor de inferencia: {e}"
+
+def generate_short_summary_with_lmstudio(page_text: str, doc_name: str, page_num: int) -> dict:
+    """
+    Envía 'page_text' a la inferencia para obtener un resumen corto (10-20 palabras).
+    """
+    prompt = (
+        f"Documento: {doc_name}, página {page_num}.\n"
+        "Elabora un resumen ultra corto (10 a 20 palabras) que incluya:\n"
+        "- Tema central\n"
+        "- Acción o conclusión\n"
+        "- Indica también la página y el documento.\n\n"
+        "Texto de la página:\n"
+        f"{page_text}\n\n"
+        "Resumen corto:"
+    )
+
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "model": "llama-3.2-3b-instruct",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 100,
+        "stream": False
+    }
+
+    try:
+        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
+        if response.status_code == 200:
+            short_summary = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            return {
+                "doc_name": doc_name,
+                "page_number": page_num,
+                "short_summary": short_summary
+            }
+        else:
+            return {
+                "doc_name": doc_name,
+                "page_number": page_num,
+                "short_summary": f"Error {response.status_code}: No se pudo obtener resumen"
+            }
+    except Exception as e:
+        return {
+            "doc_name": doc_name,
+            "page_number": page_num,
+            "short_summary": f"Exception: {str(e)}"
+        }
+
+
+def get_relevant_pages_from_summary(summary: dict, question: str) -> dict:
+    """
+    Dado un resumen (con título y bloques) y una pregunta, 
+    solicita al LLM que indique, en formato JSON, el documento y
+    las páginas relevantes para responder la pregunta.
+    
+    El output esperado es:
+    {
+        "document": "<título>",
+        "pages": [<número1>, <número2>, ...]
+    }
+    """
+    prompt = (
+        "A continuación se muestra el resumen de un documento:\n\n"
+        f"{json.dumps(summary, indent=2)}\n\n"
+        "Con base en el resumen, determina qué páginas contienen la información necesaria "
+        "para responder la siguiente pregunta:\n\n"
+        f"Pregunta: {question}\n\n"
+        "Responde únicamente en el siguiente formato JSON, sin texto adicional:\n"
+        "{\n"
+        '  "document": "<título>",\n'
+        '  "pages": [número1, número2, ...]\n'
+        "}\n\n"
+        "Asegúrate de que los números de página sean enteros."
+    )
+    
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 150,
+        "temperature": 0.7,
+        "stream": False
+    }
+    
+    try:
+        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
+        if response.status_code == 200:
+            output = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            try:
+                data = json.loads(output)
+                # Validamos que 'pages' sea una lista de enteros.
+                if "pages" in data and isinstance(data["pages"], list):
+                    data["pages"] = [int(p) for p in data["pages"] if isinstance(p, int) or (isinstance(p, str) and p.isdigit())]
+                return data
+            except json.JSONDecodeError:
+                st.error("No se pudo decodificar el JSON de la respuesta al obtener páginas relevantes.")
+                return {}
+        else:
+            st.error(f"Error en la solicitud para obtener páginas relevantes: {response.status_code}")
+            return {}
+    except Exception as e:
+        st.error(f"Error al conectar con el servidor de inferencia: {e}")
+        return {}
