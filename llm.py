@@ -1,280 +1,117 @@
 import requests
 import json
 import streamlit as st
-from docs import get_classification_snippet, get_existing_categories, get_pages_text_by_numbers
-from typing import Tuple
+from docs import get_classification_snippet, get_existing_categories
+from typing import Tuple, List, Dict
 
 INFERENCE_SERVER_URL = "http://localhost:1234/v1/chat/completions"
+MODEL_NAME = "meta-llama-3.1-8b-instruct"
+
+headers = {'Content-Type': 'application/json'}
+
+def call_llm(prompt: str, schema: dict = None, temperature: float = 0.7, max_tokens: int = 300) -> dict:
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False
+    }
+
+    if schema:
+        payload["response_format"] = {"type": "json_schema", "json_schema": schema}
+
+    response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
+
+    if response.ok:
+        content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return {"error": "Invalid JSON response", "content": content}
+    else:
+        return {"error": f"HTTP Error {response.status_code}", "details": response.text}
 
 def classify_text_with_lmstudio(text: str, output_folder: str) -> Tuple[str, str]:
-    """
-    Clasifica el texto en 'main_category' y 'sub_category' utilizando el servidor de inferencia.
-    """
     categories_dict = get_existing_categories(output_folder)
-    existing_structure = json.dumps(categories_dict, indent=4)
     snippet = get_classification_snippet(text)
 
-    prompt_instructions = (
-        "Analiza el texto y categorízalo en 'main_category' y 'sub_category'. "
-        "Utiliza las categorías existentes si es posible, o crea una nueva categoría descriptiva. "
-        "No uses nombres numéricos ni muy cortos.\n\n"
-        f"Categorías existentes:\n{existing_structure}\n\n"
-        f"Texto:\n{snippet}\n\n"
+    prompt = (
+        "Clasifica este texto en categorías existentes o nuevas. No uses nombres numéricos ni cortos.\n\n"
+        f"Categorías existentes:\n{json.dumps(categories_dict, indent=4)}\n\n"
+        f"Texto:\n{snippet}"
     )
 
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "model": "llama-3.2-3b-instruct",
-        "messages": [
-            {"role": "system", "content": "Eres un asistente que siempre responde con datos en formato JSON."},
-            {"role": "user", "content": prompt_instructions}
-        ],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "classification_response",
-                "strict": "true",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "main_category": {"type": "string"},
-                        "sub_category": {"type": "string"}
-                    },
-                    "required": ["main_category", "sub_category"]
-                }
-            }
+    schema = {
+        "type": "object",
+        "properties": {
+            "main_category": {"type": "string"},
+            "sub_category": {"type": "string"}
         },
-        "temperature": 0.7,
-        "max_tokens": 100,
-        "stream": False
+        "required": ["main_category", "sub_category"]
     }
 
-    try:
-        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            generated_text = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            try:
-                data = json.loads(generated_text)
-                main_category = data.get("main_category", "Sin_Clasificar").strip()
-                sub_category = data.get("sub_category", "Sin_Subcategoria").strip()
-                if main_category.isnumeric() or len(main_category) < 3:
-                    main_category = "Nueva_Categoria_Descriptiva"
-                if sub_category.isnumeric() or len(sub_category) < 3:
-                    sub_category = "Nueva_Subcategoria_Descriptiva"
-                return main_category, sub_category
-            except json.JSONDecodeError:
-                st.error("No se pudo decodificar el JSON de la respuesta del LLM.")
-                return "Sin_Clasificar", "Sin_Subcategoria"
-        else:
-            st.error(f"Error en la solicitud a Inference Server: {response.status_code} => {response.text}")
-            return "Sin_Clasificar", "Sin_Subcategoria"
-    except Exception as e:
-        st.error(f"Error al conectar con el servidor de inferencia: {e}")
-        return "Sin_Clasificar", "Sin_Subcategoria"
+    result = call_llm(prompt, schema=schema)
+    main_category = result.get("main_category", "Sin_Clasificar")
+    sub_category = result.get("sub_category", "Sin_Subcategoria")
 
-def summarize_chunk_with_lmstudio(pages):
-    """
-    Resume un chunk de páginas utilizando el servidor de inferencia.
-    """
+    return main_category, sub_category
+
+def summarize_chunk_with_lmstudio(pages: List[Tuple[int, str]]) -> Dict:
     if not pages:
-        return None
+        return {}
 
-    start_page = pages[0][0]
-    end_page = pages[-1][0]
-    combined_text = ""
-    for pnum, ptext in pages:
-        combined_text += f"--- Página {pnum} ---\n{ptext}\n"
+    start_page, end_page = pages[0][0], pages[-1][0]
+    combined_text = "\n".join(f"--- Página {pnum} ---\n{ptext}" for pnum, ptext in pages)
 
     prompt = (
-        f"Estas son las páginas {start_page} a {end_page} de un conjunto de artículos. "
-        "Elabora un resumen conciso en formato JSON que contenga los puntos más importantes, "
-        "manteniendo la referencia a las páginas.\n"
-        "Formato esperado:\n\n"
-        "{\n"
-        "   \"start_page\": <int>,\n"
-        "   \"end_page\": <int>,\n"
-        "   \"summary\": \"Resumen...\"\n"
-        "}\n\n"
-        f"{combined_text}\n\n"
-        "Crea el resumen ahora:"
+        f"Resume brevemente las páginas {start_page}-{end_page}. Incluye los puntos clave.\n\n{combined_text}"
     )
 
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "model": "llama-3.2-3b-instruct",
-        "messages": [{"role": "user", "content": prompt}],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "chunk_summary",
-                "strict": "true",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "start_page": {"type": "integer"},
-                        "end_page": {"type": "integer"},
-                        "summary": {"type": "string"}
-                    },
-                    "required": ["start_page", "end_page", "summary"]
-                }
-            }
+    schema = {
+        "type": "object",
+        "properties": {
+            "start_page": {"type": "integer"},
+            "end_page": {"type": "integer"},
+            "summary": {"type": "string"}
         },
-        "temperature": 0.7,
-        "max_tokens": 300,
-        "stream": False
+        "required": ["start_page", "end_page", "summary"]
     }
 
-    try:
-        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            generated_text = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            try:
-                data = json.loads(generated_text)
-                return data
-            except json.JSONDecodeError:
-                return {
-                    "start_page": start_page,
-                    "end_page": end_page,
-                    "summary": "No se pudo obtener un resumen estructurado."
-                }
-        else:
-            return {
-                "start_page": start_page,
-                "end_page": end_page,
-                "summary": f"Error en la solicitud al servidor de inferencia: {response.status_code}"
-            }
-    except Exception as e:
-        return {
-            "start_page": start_page,
-            "end_page": end_page,
-            "summary": f"Error al conectar con el servidor de inferencia: {e}"
-        }
+    return call_llm(prompt, schema=schema)
 
 def chat_with_context(context: str, question: str) -> str:
-    """
-    Chatea con el contenido resumido usando el servidor de inferencia.
-    """
     prompt = (
-        "A continuación tienes un conjunto de páginas (resumidas si fue necesario). "
-        "Basándote en el contenido, responde la siguiente pregunta. "
-        "Si no encuentras la información, indica que no está disponible.\n\n"
         f"Contexto:\n{context}\n\n"
         f"Pregunta: {question}\n"
         "Respuesta:"
     )
 
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "messages": [{"role": "user", "content": prompt}]
-    }
+    result = call_llm(prompt)
+    return result.get("content", result.get("error", "Sin respuesta válida"))
 
-    try:
-        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            answer = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            return answer
-        else:
-            return f"Error en la solicitud al servidor de inferencia: {response.status_code} => {response.text}"
-    except Exception as e:
-        return f"Error al conectar con el servidor de inferencia: {e}"
-
-def generate_short_summary_with_lmstudio(page_text: str, doc_name: str, page_num: int) -> dict:
-    """
-    Envía 'page_text' a la inferencia para obtener un resumen corto (10-20 palabras).
-    """
+def generate_short_summary_with_lmstudio(page_text: str, doc_name: str, page_num: int) -> Dict:
     prompt = (
-        f"Documento: {doc_name}, página {page_num}.\n"
-        "Elabora un resumen ultra corto (10 a 20 palabras) que incluya:\n"
-        "- Tema central\n"
-        "- Acción o conclusión\n"
-        "- Indica también la página y el documento.\n\n"
-        "Texto de la página:\n"
-        f"{page_text}\n\n"
-        "Resumen corto:"
+        f"Documento: {doc_name}, página {page_num}. Resume en 10-20 palabras el tema principal y conclusiones.\n\n{page_text}"
     )
 
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "model": "llama-3.2-3b-instruct",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 100,
-        "stream": False
+    result = call_llm(prompt)
+    return {
+        "doc_name": doc_name,
+        "page_number": page_num,
+        "short_summary": result.get("content", result.get("error", "Sin resumen válido"))
     }
 
-    try:
-        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            short_summary = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            return {
-                "doc_name": doc_name,
-                "page_number": page_num,
-                "short_summary": short_summary
-            }
-        else:
-            return {
-                "doc_name": doc_name,
-                "page_number": page_num,
-                "short_summary": f"Error {response.status_code}: No se pudo obtener resumen"
-            }
-    except Exception as e:
-        return {
-            "doc_name": doc_name,
-            "page_number": page_num,
-            "short_summary": f"Exception: {str(e)}"
-        }
-
-
-def get_relevant_pages_from_summary(summary: dict, question: str) -> dict:
-    """
-    Dado un resumen (con título y bloques) y una pregunta, 
-    solicita al LLM que indique, en formato JSON, el documento y
-    las páginas relevantes para responder la pregunta.
-    
-    El output esperado es:
-    {
-        "document": "<título>",
-        "pages": [<número1>, <número2>, ...]
-    }
-    """
+def get_relevant_pages_from_summary(summary: Dict, question: str) -> Dict:
     prompt = (
-        "A continuación se muestra el resumen de un documento:\n\n"
-        f"{json.dumps(summary, indent=2)}\n\n"
-        "Con base en el resumen, determina qué páginas contienen la información necesaria "
-        "para responder la siguiente pregunta:\n\n"
-        f"Pregunta: {question}\n\n"
-        "Responde únicamente en el siguiente formato JSON, sin texto adicional:\n"
-        "{\n"
-        '  "document": "<título>",\n'
-        '  "pages": [número1, número2, ...]\n'
-        "}\n\n"
-        "Asegúrate de que los números de página sean enteros."
+        f"Usa el siguiente resumen para indicar qué páginas responden a la pregunta.\n\n"
+        f"Resumen:\n{json.dumps(summary, indent=2)}\n\nPregunta: {question}\n"
+        "Devuelve sólo JSON:\n{\"document\": \"nombre\", \"pages\": [páginas]}"
     )
-    
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 150,
-        "temperature": 0.7,
-        "stream": False
-    }
-    
-    try:
-        response = requests.post(INFERENCE_SERVER_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            output = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            try:
-                data = json.loads(output)
-                # Validamos que 'pages' sea una lista de enteros.
-                if "pages" in data and isinstance(data["pages"], list):
-                    data["pages"] = [int(p) for p in data["pages"] if isinstance(p, int) or (isinstance(p, str) and p.isdigit())]
-                return data
-            except json.JSONDecodeError:
-                st.error("No se pudo decodificar el JSON de la respuesta al obtener páginas relevantes.")
-                return {}
-        else:
-            st.error(f"Error en la solicitud para obtener páginas relevantes: {response.status_code}")
-            return {}
-    except Exception as e:
-        st.error(f"Error al conectar con el servidor de inferencia: {e}")
-        return {}
+
+    result = call_llm(prompt)
+
+    if "pages" in result:
+        result["pages"] = [int(p) for p in result["pages"] if str(p).isdigit()]
+
+    return result
