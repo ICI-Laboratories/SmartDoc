@@ -11,10 +11,15 @@ from docs import (
     hierarchical_summary,
     save_hierarchical_summary,
     load_hierarchical_summary,
-    find_block_for_page,  # Ahora se utiliza en el chat para búsqueda por página.
-    save_pdf_to_folder
+    find_block_for_page,  # Se utiliza en el chat para búsqueda por página.
+    save_pdf_to_folder,
+    get_pages_text_by_numbers
 )
-from llm import classify_text_with_lmstudio, chat_with_context, get_relevant_pages_from_summary, get_pages_text_by_numbers
+from llm import (
+    classify_text_with_lmstudio,
+    chat_with_context,
+    get_relevant_pages_from_summary
+)
 
 def show_pdf(file_path):
     """
@@ -23,7 +28,6 @@ def show_pdf(file_path):
     with open(file_path, "rb") as f:
         pdf_data = f.read()
     base64_pdf = base64.b64encode(pdf_data).decode("utf-8")
-
     pdf_display = f"""
     <iframe 
         src="data:application/pdf;base64,{base64_pdf}" 
@@ -50,43 +54,49 @@ else:
     # Obtener información del usuario
     user = st.experimental_user
 
-    # Carpeta base del usuario (por ejemplo, "D:\clasdocusers\{usuario}")
+    # Carpeta base del usuario (ej.: "D:\clasdocusers\{usuario}")
     output_folder = os.path.join(r"D:\clasdocusers", user.name)
     os.makedirs(output_folder, exist_ok=True)
 
-    # Crear un estado interno para controlar la sección seleccionada
-    if "selected_section" not in st.session_state:
-        st.session_state["selected_section"] = None
+    # Barra lateral con información y opción de cerrar sesión
+    st.sidebar.title("Opciones de usuario")
+    st.sidebar.write(f"Usuario: {user.name}")
+    if st.sidebar.button("Cerrar sesión", on_click=st.logout):
+        st.experimental_rerun()
 
-    # Barra lateral con botones
-    with st.sidebar:
-        st.write(f"Usuario: {user.name}")
+    # Inicializar key para el file uploader (para reiniciarlo tras procesar archivos)
+    if "uploader_key" not in st.session_state:
+        st.session_state.uploader_key = 0
 
-        if st.button("Cargar y Transcribir PDFs"):
-            st.session_state["selected_section"] = "upload"
+    # Inicializar la lista de archivos ya procesados para evitar reprocesamiento
+    if "processed_files" not in st.session_state:
+        st.session_state.processed_files = []
 
-        if st.button("Revisar Archivos Guardados"):
-            st.session_state["selected_section"] = "review"
-
-        if st.button("Chatear con Artículos"):
-            st.session_state["selected_section"] = "chat"
-
-        if st.button("Cerrar sesión", on_click=st.logout):
-            st.experimental_rerun()
-
-    # Determinar la sección seleccionada
-    menu = st.session_state["selected_section"]
+    # Selector de pestañas para las secciones principales
+    tabs = st.tabs(["Cargar y Transcribir PDFs", "Revisar Archivos Guardados", "Chatear con Artículos"])
 
     # --------------------------------------------------------------------------
     # SECCIÓN 1: Cargar y Transcribir PDFs
     # --------------------------------------------------------------------------
-    if menu == "upload" or menu is None:
+    with tabs[0]:
         st.header(f"Bienvenido, {user.name}!")
-        st.title("Cargar y Transcribir PDFs")
-        uploaded_files = st.file_uploader("Sube tus archivos PDF", type=["pdf"], accept_multiple_files=True)
+        st.subheader("Cargar y Transcribir PDFs")
+
+        uploaded_files = st.file_uploader(
+            "Sube tus archivos PDF", 
+            type=["pdf"], 
+            accept_multiple_files=True,
+            key=f"uploader_{st.session_state.uploader_key}"
+        )
+
+        new_files_processed = False  # Bandera para indicar que se procesó al menos un archivo nuevo
 
         if uploaded_files:
             for uploaded_file in uploaded_files:
+                if uploaded_file.name in st.session_state.processed_files:
+                    st.info(f"El archivo {uploaded_file.name} ya fue procesado.")
+                    continue
+
                 st.write(f"### Procesando archivo: {uploaded_file.name}")
                 try:
                     # 1) EXTRAER TEXTO
@@ -140,14 +150,23 @@ else:
                         file_name=os.path.basename(save_path),
                         mime="text/plain"
                     )
+
+                    # Marcar el archivo como procesado y activar la bandera
+                    st.session_state.processed_files.append(uploaded_file.name)
+                    new_files_processed = True
                 except Exception as e:
                     st.error(f"Error al procesar {uploaded_file.name}: {e}")
+
+            # Si se procesó al menos un archivo nuevo, reiniciamos el file uploader
+            if new_files_processed:
+                st.session_state.uploader_key += 1
+                st.rerun()
 
     # --------------------------------------------------------------------------
     # SECCIÓN 2: Revisar Archivos Guardados
     # --------------------------------------------------------------------------
-    elif menu == "review":
-        st.title("Revisar Archivos Guardados")
+    with tabs[1]:
+        st.header("Revisar Archivos Guardados")
         if os.path.exists(output_folder):
             categories = [d for d in os.listdir(output_folder) if os.path.isdir(os.path.join(output_folder, d))]
             if categories:
@@ -159,14 +178,12 @@ else:
                     ]
                     selected_subcategory = st.selectbox("Selecciona una subcategoría:", [""] + subcategories)
                     if selected_subcategory:
-                        pdf_files = [
-                            f for f in os.listdir(os.path.join(output_folder, selected_category, selected_subcategory))
-                            if f.lower().endswith(".pdf")
-                        ]
+                        folder_path = os.path.join(output_folder, selected_category, selected_subcategory)
+                        pdf_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".pdf")]
                         if pdf_files:
                             selected_pdf = st.selectbox("Selecciona un archivo PDF para revisar:", pdf_files)
                             if selected_pdf:
-                                file_path = os.path.join(output_folder, selected_category, selected_subcategory, selected_pdf)
+                                file_path = os.path.join(folder_path, selected_pdf)
                                 show_pdf(file_path)
                         else:
                             st.warning("No hay archivos PDF en esta subcategoría.")
@@ -178,100 +195,82 @@ else:
             st.warning("La carpeta de usuario no existe.")
 
     # --------------------------------------------------------------------------
-    # SECCIÓN 3: Chatear con Artículos (flujo modificado)
+    # SECCIÓN 3: Chatear con Artículos (flujo simplificado)
     # --------------------------------------------------------------------------
-        # Dentro de la sección "Chatear con Artículos"...
-    elif menu == "chat":
-        st.title("Chatear con Artículos")
+    with tabs[2]:
+        st.header("Chatear con Artículos")
         st.markdown(
-            "Agrega los resúmenes deseados y luego formula tu pregunta. "
-            "Puedes optar por extraer únicamente las páginas relevantes según el resumen."
+            "Agrega la bibliografía deseada y luego formula tu pregunta. "
+            "El sistema extraerá las páginas relevantes de la bibliografía para responder tu consulta."
         )
 
-        # (Mantener el panel para agregar resúmenes, igual que en la versión anterior)
-        if "selected_summaries" not in st.session_state:
-            st.session_state.selected_summaries = []
+        # Inicializar la lista de bibliografía seleccionada en el estado de sesión
+        if "selected_bibliografia" not in st.session_state:
+            st.session_state.selected_bibliografia = []
 
-        with st.expander("Agregar resúmenes"):
-            # [Código similar para seleccionar categoría, subcategoría y resumen...]
-            # Se conserva el flujo de selección y agregación de resúmenes.
-            # ...
+        # Panel para agregar bibliografía
+        with st.expander("Agregar bibliografía"):
+            # Seleccionar categoría
+            categories = [d for d in os.listdir(output_folder) if os.path.isdir(os.path.join(output_folder, d))]
+            selected_category = st.selectbox("Selecciona una categoría", [""] + categories, key="chat_category")
+            if selected_category:
+                subcategories = [d for d in os.listdir(os.path.join(output_folder, selected_category))
+                                 if os.path.isdir(os.path.join(output_folder, selected_category, d))]
+                selected_subcategory = st.selectbox("Selecciona una subcategoría", [""] + subcategories, key="chat_subcategory")
+                if selected_subcategory:
+                    folder_path = os.path.join(output_folder, selected_category, selected_subcategory)
+                    bibliografia_files = [f for f in os.listdir(folder_path) if f.endswith("_hierarchical_summary.json")]
+                    selected_biblio = st.selectbox("Selecciona una bibliografía", [""] + bibliografia_files, key="chat_biblio")
+                    if selected_biblio and st.button("Agregar bibliografía"):
+                        full_path = os.path.join(folder_path, selected_biblio)
+                        if full_path not in st.session_state.selected_bibliografia:
+                            st.session_state.selected_bibliografia.append(full_path)
+                            st.success("Bibliografía agregada.")
+                        else:
+                            st.info("La bibliografía ya fue agregada.")
 
-            st.write("**Resúmenes seleccionados:**")
-        if st.session_state.selected_summaries:
-            for idx, summary_path in enumerate(st.session_state.selected_summaries):
-                rel_path = os.path.relpath(summary_path, output_folder)
-                st.write(f"{idx+1}. {rel_path}")
+        st.markdown("### Bibliografía seleccionada:")
+        if st.session_state.selected_bibliografia:
+            # Mostrar cada elemento con opción para quitarlo
+            for idx, bib_path in enumerate(st.session_state.selected_bibliografia):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    rel_path = os.path.relpath(bib_path, output_folder)
+                    st.write(f"{idx+1}. {rel_path}")
+                with col2:
+                    if st.button("Quitar", key=f"remove_{idx}"):
+                        st.session_state.selected_bibliografia.pop(idx)
+                        st.rerun()
         else:
-            st.info("No se han agregado resúmenes.")
+            st.info("No se ha agregado bibliografía.")
 
-        # Nueva opción de flujo:
-        mode = st.selectbox(
-            "Elige el modo de consulta:",
-            ["Extracción de páginas relevante", "Todo el documento", "Página específica"]
-        )
-
+        # En este flujo solo se usa la extracción de páginas relevantes
         question = st.text_input("Escribe tu pregunta:")
 
         if question.strip():
-            if mode == "Extracción de páginas relevante":
-                # Para este modo asumimos que se ha agregado un solo resumen
-                if len(st.session_state.selected_summaries) != 1:
-                    st.warning("Selecciona exactamente un resumen para este modo.")
-                else:
-                    summary_data = load_hierarchical_summary(st.session_state.selected_summaries[0])
-                    # Llamamos a la función que indica las páginas relevantes
-                    pages_info = get_relevant_pages_from_summary(summary_data, question)
-                    if pages_info and "pages" in pages_info:
-                        st.write("El LLM determinó que se requieren las siguientes páginas:")
-                        st.write(pages_info["pages"])
-                        # Asumimos que el archivo de texto se encuentra en la misma carpeta que el resumen,
-                        # con el mismo nombre base pero con extensión .txt.
-                        base_filename = summary_data["title"]  # O extraer del nombre del archivo resumen
-                        txt_filename = base_filename + ".txt"
-                        txt_path = os.path.join(os.path.dirname(st.session_state.selected_summaries[0]), txt_filename)
-                        if os.path.exists(txt_path):
-                            with open(txt_path, "r", encoding="utf-8") as f:
-                                full_text = f.read()
-                            context = get_pages_text_by_numbers(full_text, pages_info["pages"])
-                            if context.strip():
-                                # Llamar al modelo potente con el contexto extraído
-                                answer = chat_with_context(context, question)
-                                st.markdown("**Respuesta del LLM (modelo potente):**")
-                                st.write(answer)
-                            else:
-                                st.warning("No se encontró texto en las páginas indicadas.")
-                        else:
-                            st.error("No se encontró el archivo de texto correspondiente al documento.")
-                    else:
-                        st.warning("No se pudo determinar las páginas relevantes.")
-            elif mode == "Todo el documento":
-                # Flujo actual para un solo resumen
-                if len(st.session_state.selected_summaries) != 1:
-                    st.warning("Selecciona exactamente un resumen para este modo.")
-                else:
-                    summary_data = load_hierarchical_summary(st.session_state.selected_summaries[0])
-                    if st.button("Preguntar (Todo el documento)"):
-                        context = "\n".join([blk["small_summary"] for blk in summary_data["blocks"]])
-                        answer = chat_with_context(context, question)
-                        st.markdown("**Respuesta del LLM:**")
-                        st.write(answer)
-            else:  # Página específica
-                if len(st.session_state.selected_summaries) != 1:
-                    st.warning("Selecciona exactamente un resumen para este modo.")
-                else:
-                    summary_data = load_hierarchical_summary(st.session_state.selected_summaries[0])
-                    page_number = st.number_input("Número de página:", min_value=1, value=1)
-                    if st.button("Preguntar (Página específica)"):
-                        the_block = find_block_for_page(summary_data["blocks"], page_number)
-                        if the_block:
-                            context = the_block["small_summary"]
+            if len(st.session_state.selected_bibliografia) != 1:
+                st.warning("Selecciona exactamente una bibliografía para formular tu pregunta.")
+            else:
+                bib_data = load_hierarchical_summary(st.session_state.selected_bibliografia[0])
+                pages_info = get_relevant_pages_from_summary(bib_data, question)
+                if pages_info and "pages" in pages_info:
+                    base_filename = bib_data["title"]  # Se asume que el .txt comparte nombre base
+                    txt_filename = base_filename + ".txt"
+                    txt_path = os.path.join(os.path.dirname(st.session_state.selected_bibliografia[0]), txt_filename)
+                    if os.path.exists(txt_path):
+                        with open(txt_path, "r", encoding="utf-8") as f:
+                            full_text = f.read()
+                        context = get_pages_text_by_numbers(full_text, pages_info["pages"])
+                        if context.strip():
                             answer = chat_with_context(context, question)
-                            st.markdown("**Respuesta del LLM:**")
+                            st.markdown("**Respuesta del LLM (modelo potente):**")
                             st.write(answer)
                         else:
-                            st.warning("No se encontró ese número de página en el resumen.")
-
+                            st.warning("No se encontró texto en las páginas indicadas.")
+                    else:
+                        st.error("No se encontró el archivo de texto correspondiente al documento.")
+                else:
+                    st.warning("No se pudo determinar las páginas relevantes para la consulta.")
 
     # Pie de página (opcional)
     st.caption("Desarrollado por el equipo de ICI Laboratories en la Universidad de Colima, Facultad de Ingeniería Mecánica y Eléctrica.")
