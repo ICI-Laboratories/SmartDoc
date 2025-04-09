@@ -116,7 +116,7 @@ def classify_text_with_lmstudio(text, output_folder):
     }
 
     try:
-        response = requests.post("http://localhost:1234/v1/chat/completions", headers=headers, json=payload)
+        response = requests.post("http://localhost:8080/lmstudio", headers=headers, json=payload)
         
         if response.status_code == 200:
             generated_text = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()

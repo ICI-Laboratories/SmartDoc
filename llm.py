@@ -7,7 +7,7 @@ from docs import get_classification_snippet, get_existing_categories, get_pages_
 from typing import Tuple, List, Dict, Any
 
 
-INFERENCE_SERVER_URL = "http://localhost:1234/v1/chat/completions"
+INFERENCE_SERVER_URL = "http://localhost:8080/lmstudio"
 MODEL_NAME = "meta-llama-3.1-8b-instruct"
 
 headers = {'Content-Type': 'application/json'}
