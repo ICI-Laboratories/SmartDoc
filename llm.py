@@ -12,7 +12,7 @@ MODEL_NAME = "meta-llama-3.1-8b-instruct"
 
 headers = {'Content-Type': 'application/json'}
 
-def call_llm(prompt: str, schema: dict = None, temperature: float = 0.7, max_tokens: int = 300) -> dict:
+def call_llm(prompt: str, schema: dict = None, temperature: float = 0.7, max_tokens: int = 3000) -> dict:
     payload = {
         "model": MODEL_NAME,
         "messages": [{"role": "user", "content": prompt}],
