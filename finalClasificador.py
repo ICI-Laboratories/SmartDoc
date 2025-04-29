@@ -153,7 +153,7 @@ def save_to_folder(text, base_folder_path, filename, main_category, sub_category
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(text)
     return file_path
-
+    
 # -------------------- FUNCIONES DE RESUMEN JERÁRQUICO --------------------
 
 def extract_pages_from_text(text):
