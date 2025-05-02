@@ -78,7 +78,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Comprobación de login
-if not st.experimental_user.is_logged_in:
+if not st.user.is_logged_in:
     st.title("SmartDoc 📚")
     st.subheader("Asistente Inteligente para el Análisis de Documentos")
     
@@ -119,7 +119,6 @@ os.makedirs(output_folder, exist_ok=True)
 
 # Sidebar con información del usuario
 with st.sidebar:
-    st.image("https://via.placeholder.com/150?text=SmartDoc", width=150)
     st.markdown(f"<h2 style='text-align:center;'>Bienvenido, {user.name}</h2>", unsafe_allow_html=True)
     
     # Estadísticas de uso
@@ -492,4 +491,4 @@ with tabs[2]:
 
 # Pie de página
 st.markdown("---")
-st.caption("SmartDoc © 2025 ICI Laboratories, Universidad de Colima - Todos los derechos reservados")
+st.caption("SmartReview © 2025 ICI Laboratories, Universidad de Colima - Todos los derechos reservados")

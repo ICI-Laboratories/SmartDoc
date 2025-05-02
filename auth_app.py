@@ -10,16 +10,16 @@ def login_screen():
         pass
 
 # Verifica si el usuario ya se ha autenticado
-if not st.experimental_user.is_logged_in:
+if not st.user.is_logged_in:
     login_screen()
 else:
     # Una vez autenticado, se obtiene la información del usuario
-    user = st.experimental_user
+    user = st.user
     st.header(f"Bienvenido, {user.name}!")
     
     # Botón para cerrar sesión
     if st.button("Cerrar sesión", on_click=st.logout):
-        st.experimental_rerun()
+        st.rerun()
     
     # Definir la ruta base para guardar los archivos
     base_path = r"D:\clasdocusers"
