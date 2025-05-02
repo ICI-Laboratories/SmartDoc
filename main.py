@@ -113,7 +113,7 @@ if "refresh_uploader" not in st.session_state:
     st.session_state.refresh_uploader = False
 
 # Configuración del usuario
-user = st.experimental_user
+user = st.user
 output_folder = os.path.join(r"D:\clasdocusers", user.name)
 os.makedirs(output_folder, exist_ok=True)
 
