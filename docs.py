@@ -1,3 +1,4 @@
+#docs.py
 import fitz
 import easyocr
 from PIL import Image
