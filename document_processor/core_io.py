@@ -39,15 +39,7 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
     Path(name).replace(path)
 
 
-def _unique_path(base: Path) -> Path:
-    if not base.exists():
-        return base
-    i = 1
-    while True:
-        cand = base.with_name(f"{base.stem}-{i}{base.suffix}")
-        if not cand.exists():
-            return cand
-        i += 1
+# SE ELIMINÓ LA FUNCIÓN _unique_path
 
 
 @dataclass(frozen=True)
@@ -71,7 +63,7 @@ def save_markdown_to_folder(markdown: str, base: str | Path, filename_base: str,
     paths = _category_paths(base, main, sub)
     safe = slugify(filename_base) or "documento"
     path = (paths.subcategory / f"{safe}.md")
-    path = _unique_path(path)
+    # Se eliminó la llamada a _unique_path
     if not markdown.endswith("\n"):
         markdown += "\n"
     _atomic_write_text(path, markdown)
@@ -84,7 +76,8 @@ def save_pdf_to_folder(pdf: bytes, base: str | Path, pdf_name: str, main: str, s
         raise ValueError("pdf vacío.")
     paths = _category_paths(base, main, sub)
     name = slugify(pdf_name.rsplit(".", 1)[0]) or "documento"
-    path = _unique_path(paths.subcategory / f"{name}.pdf")
+    path = (paths.subcategory / f"{name}.pdf")
+    # Se eliminó la llamada a _unique_path
     _atomic_write_bytes(path, pdf)
     logger.info("PDF guardado en %s", path)
     return path

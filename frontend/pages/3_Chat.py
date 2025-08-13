@@ -1,64 +1,160 @@
+# frontend/pages/3_Chat.py
+
 from pathlib import Path
+from typing import Dict, List, Tuple, Optional
 import requests
 import streamlit as st
 
 from lib.common import (
-    SESSION, LLM_URL, USER_FOLDER,
-    get_available_summaries, read_json_cached
+    get_http_session,
+    LLM_URL,
+    USER_FOLDER,
+    get_available_summaries,
+    read_json_cached,
 )
 
 st.title("Chat con documentos")
 
-summary_files_map = get_available_summaries(USER_FOLDER)
+# ---------------------------------------------------------------------
+# Helpers de metadatos (tema / subtemas)
+# ---------------------------------------------------------------------
+def extract_topic_metadata(summary_obj: dict) -> Tuple[Optional[str], List[str]]:
+    topic = None
+    subtopics: List[str] = []
+    if not isinstance(summary_obj, dict):
+        return topic, subtopics
+
+    for k in ("topic", "tema", "label", "category", "categoria", "title"):
+        v = summary_obj.get(k)
+        if isinstance(v, str) and v.strip():
+            topic = v.strip()
+            break
+
+    for k in ("subtopics", "subtemas", "topics", "labels", "etiquetas", "tags", "keywords"):
+        v = summary_obj.get(k)
+        if isinstance(v, list):
+            subtopics = [str(x).strip() for x in v if isinstance(x, (str, int, float)) and str(x).strip()]
+            break
+
+    return topic, subtopics
+
+def load_summary(path: Path) -> dict:
+    mtime_json = path.stat().st_mtime_ns
+    return read_json_cached(str(path), mtime_json)
+
+# ---------------------------------------------------------------------
+# Carga de resúmenes disponibles
+# ---------------------------------------------------------------------
+summary_files_map: Dict[str, str] = get_available_summaries(USER_FOLDER)
 if not summary_files_map:
     st.warning("No se encontraron documentos procesados con resúmenes.")
-else:
-    options = sorted(summary_files_map.keys())
-    selected_docs = st.multiselect(
-        "Documentos",
-        options,
-        help="Seleccione uno o más documentos para contextualizar la respuesta.",
-    )
+    st.stop()
 
-    st.markdown("---")
-    with st.form("chat_form", clear_on_submit=False):
-        question = st.text_area(
-            "Pregunta",
-            placeholder="Ejemplo: ¿Cuáles son las conclusiones principales?",
-            height=100,
-        )
-        submit = st.form_submit_button("Enviar")
+# Índices: cat -> subcat -> [doc_key], y doc_key -> (cat, subcat) / summary_path
+by_cat: Dict[str, Dict[str, List[str]]] = {}
+summary_path_by_key: Dict[str, Path] = {}
+cat_subcat_by_doc: Dict[str, Tuple[str, str]] = {}
 
-    if submit:
-        if not selected_docs:
-            st.warning("Seleccione al menos un documento.")
-        elif not question.strip():
-            st.warning("Escriba una pregunta.")
-        else:
-            with st.spinner("Buscando información relevante..."):
-                try:
-                    summaries = []
-                    doc_paths = []
-                    for k in selected_docs:
-                        summary_path = Path(summary_files_map[k])
-                        md_path = summary_path.with_suffix("").with_suffix(".md")
-                        mtime_json = summary_path.stat().st_mtime_ns
-                        summary_obj = read_json_cached(str(summary_path), mtime_json)
-                        summaries.append(summary_obj)
-                        doc_paths.append(str(md_path))
+for doc_key, sum_path_str in summary_files_map.items():
+    spath = Path(sum_path_str)
+    summary_path_by_key[doc_key] = spath
+    try:
+        rel = spath.relative_to(USER_FOLDER)
+        parts = rel.parts
+        cat = parts[0] if len(parts) > 0 else "General"
+        subcat = parts[1] if len(parts) > 1 else "General"
+    except Exception:
+        cat, subcat = "General", "General"
 
-                    payload = {"summaries": summaries, "doc_paths": doc_paths, "question": question}
-                    resp = SESSION.post(f"{LLM_URL}/chat_with_multiple_docs", json=payload, timeout=90)
-                    resp.raise_for_status()
-                    answer = resp.json().get("answer", "No se recibió una respuesta válida.")
-                    st.markdown("#### Respuesta")
-                    st.write(answer)
-                except requests.RequestException as e:
-                    st.error(f"Error de comunicación con el servicio: {e}")
-                except Exception as e:
-                    st.error(f"Ocurrió un error: {e}")
+    by_cat.setdefault(cat, {}).setdefault(subcat, []).append(doc_key)
+    cat_subcat_by_doc[doc_key] = (cat, subcat)
 
-st.markdown("---")
-if st.button("Limpiar cachés"):
-    get_available_summaries.clear()
-    st.experimental_rerun()
+# ---------------------------------------------------------------------
+# Estado persistente de selección
+# ---------------------------------------------------------------------
+if "selected_docs" not in st.session_state:
+    st.session_state.selected_docs = []  # lista de doc_keys persistente
+
+# ---------------------------------------------------------------------
+# Selección jerárquica: Categoría → Subcategoría → (Tema/Subtema opcional)
+# ---------------------------------------------------------------------
+categories = sorted(by_cat.keys())
+col1, col2 = st.columns(2)
+selected_cat = col1.selectbox("Categoría", [""] + categories, index=0)
+if not selected_cat:
+    st.stop()
+
+subcategories = sorted(by_cat[selected_cat].keys())
+selected_subcat = col2.selectbox("Subcategoría", [""] + subcategories, index=0)
+if not selected_subcat:
+    st.stop()
+
+# Docs de la subcategoría actual
+subcat_doc_keys = sorted(by_cat[selected_cat][selected_subcat])
+
+# Construye metadatos de la subcategoría actual (para filtros y etiquetas)
+topics_set = set()
+subtopics_set = set()
+topic_by_doc_local: Dict[str, Optional[str]] = {}
+subtopics_by_doc_local: Dict[str, List[str]] = {}
+for dk in subcat_doc_keys:
+    try:
+        sobj = load_summary(summary_path_by_key[dk])
+        t, subs = extract_topic_metadata(sobj)
+        topic_by_doc_local[dk] = t
+        subtopics_by_doc_local[dk] = subs or []
+        if t:
+            topics_set.add(t)
+        for s in subs or []:
+            subtopics_set.add(s)
+    except Exception:
+        topic_by_doc_local[dk] = None
+        subtopics_by_doc_local[dk] = []
+
+# Filtros opcionales
+col3, col4 = st.columns(2)
+topic_filter = col3.selectbox("Tema", ["(Todos)"] + sorted(topics_set), index=0) if topics_set else "(Todos)"
+subtopic_filter = col4.selectbox("Subtema", ["(Todos)"] + sorted(subtopics_set), index=0) if subtopics_set else "(Todos)"
+
+def pass_filters(dk: str) -> bool:
+    if topic_filter != "(Todos)":
+        if topic_by_doc_local.get(dk) != topic_filter:
+            return False
+    if subtopic_filter != "(Todos)":
+        if subtopic_filter not in (subtopics_by_doc_local.get(dk) or []):
+            return False
+    return True
+
+filtered_doc_keys = [dk for dk in subcat_doc_keys if pass_filters(dk)]
+
+# ---------------------------------------------------------------------
+# Multiselect que NO pierde selección al cambiar filtros
+#   - Opciones = docs filtrados ∪ docs ya seleccionados
+#   - Etiquetas enriquecidas con Tema/Subtemas y (cat/subcat) si aplica
+# ---------------------------------------------------------------------
+# Complementa metadatos para docs ya seleccionados que no estén en la subcategoría actual
+topic_by_doc_extra: Dict[str, Optional[str]] = {}
+subtopics_by_doc_extra: Dict[str, List[str]] = {}
+for dk in st.session_state.selected_docs:
+    if dk not in topic_by_doc_local:
+        try:
+            sobj = load_summary(summary_path_by_key[dk])
+            t, subs = extract_topic_metadata(sobj)
+            topic_by_doc_extra[dk] = t
+            subtopics_by_doc_extra[dk] = subs or []
+        except Exception:
+            topic_by_doc_extra[dk] = None
+            subtopics_by_doc_extra[dk] = []
+
+def label_for(dk: str) -> str:
+    # Usa metadatos locales si existen, si no, los extra
+    t = topic_by_doc_local.get(dk, topic_by_doc_extra.get(dk))
+    subs = (subtopics_by_doc_local.get(dk) or subtopics_by_doc_extra.get(dk) or [])
+    label = dk
+    if t and subs:
+        label = f"{dk} — Tema: {t} — Subtemas: {', '.join(subs)}"
+    elif t:
+        label = f"{dk} — Tema: {t}"
+    elif subs:
+        label = f"{dk} — Subtemas: {', '.join(subs)}"
+    # Si el

@@ -1,19 +1,40 @@
 # llm_service/logic/core.py
 
-import os
 import json
 import requests
+from pathlib import Path
 from typing import Tuple, List, Dict, Optional
 
-# --- Configuración ---
-INFERENCE_SERVER_URL = os.getenv("SMARTDOC_LM_URL", "http://localhost:1234/v1/chat/completions")
-MODEL_NAME = os.getenv("SMARTDOC_MODEL", "llama-3.2-3b-instruct")
-REQUEST_TIMEOUT = float(os.getenv("SMARTDOC_LM_TIMEOUT", "60"))
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ==================================================================
+# ========= INICIO DE LA MODIFICACIÓN: .env loading ===============
+# ==================================================================
+
+# Define una clase de configuración específica para este servicio
+class LLMSettings(BaseSettings):
+    # Apunta al archivo .env en la raíz del proyecto
+    model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
+
+    # Define y lee las variables del .env usando el prefijo SMARTDOC_
+    # Pydantic convierte automáticamente el alias a mayúsculas para buscar la variable de entorno
+    inference_server_url: str = Field(alias="SMARTDOC_LM_URL", default="http://localhost:1234/v1/chat/completions")
+    model_name: str = Field(alias="SMARTDOC_MODEL", default="local-model")
+    request_timeout: float = Field(alias="SMARTDOC_LM_TIMEOUT", default=60.0)
+
+# Crea una instancia única de la configuración para ser usada en este módulo
+settings = LLMSettings()
+
 HEADERS = {"Content-Type": "application/json"}
+
+# ==================================================================
+# ============== FIN DE LA MODIFICACIÓN ============================
+# ==================================================================
+
 
 # --- Helpers ---
 def get_classification_snippet(text: str) -> str:
-    """Extrae un fragmento de texto para la clasificación."""
     lower_text = text.lower()
     starts = []
     for kw in ("resumen", "introducción"):
@@ -34,7 +55,8 @@ def call_llm(
 ) -> dict:
     """Llama al servidor OpenAI-compatible y maneja errores."""
     payload = {
-        "model": MODEL_NAME,
+        # Usa los valores de la configuración
+        "model": settings.model_name,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -48,7 +70,11 @@ def call_llm(
 
     try:
         response = requests.post(
-            INFERENCE_SERVER_URL, headers=HEADERS, json=payload, timeout=REQUEST_TIMEOUT
+            # Usa los valores de la configuración
+            settings.inference_server_url,
+            headers=HEADERS,
+            json=payload,
+            timeout=settings.request_timeout
         )
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
@@ -65,7 +91,6 @@ def call_llm(
 
 # --- Funciones principales ---
 def classify_text_with_lmstudio(text: str, categories_dict: dict) -> Tuple[str, str]:
-    """Clasifica texto usando el LLM."""
     snippet = get_classification_snippet(text)
     prompt = (
         "Clasifica este texto en categorías existentes o nuevas. No uses nombres numéricos ni cortos.\n\n"
@@ -86,29 +111,39 @@ def classify_text_with_lmstudio(text: str, categories_dict: dict) -> Tuple[str, 
     return main_category, sub_category
 
 def summarize_chunk_with_lmstudio(pages: List[Tuple[int, str]]) -> Dict:
-    """Resume un bloque de páginas."""
     if not pages:
         return {"error": "No pages provided to summarize."}
+    
     start_page, end_page = pages[0][0], pages[-1][0]
-    combined_text = "\n".join(f"--- Página {pnum} ---\n{ptext}" for pnum, ptext in pages)
-    prompt = (
-        f"Resume de forma concisa el contenido de las páginas {start_page} a {end_page}. "
-        "Extrae los puntos, ideas y conclusiones clave.\n\nTexto:\n"
-        f"{combined_text}"
-    )
+    combined_text = "\n".join(ptext for _, ptext in pages)
+
+    prompt = f"""
+Eres un experto sintetizador de información. Analiza el texto de la página {start_page} de un documento.
+Tu misión es generar un resumen telegráfico, denso y extremadamente conciso.
+
+Reglas estrictas:
+1.  **Máximo 30 palabras.** No excedas este límite bajo ninguna circunstancia.
+2.  **Enfócate en la idea central.** Ignora detalles secundarios, ejemplos o introducciones. Ve directo al núcleo del argumento, hallazgo o propuesta.
+3.  **Formato de párrafo único.** No uses listas ni saltos de línea.
+
+Texto a resumir:
+---
+{combined_text}
+---
+"""
     schema = {
         "type": "object",
         "properties": {
             "start_page": {"type": "integer"},
             "end_page": {"type": "integer"},
-            "summary": {"type": "string"}
+            "summary": {"type": "string", "description": "El resumen ultra-corto (máx 30 palabras)."}
         },
         "required": ["start_page", "end_page", "summary"]
     }
-    return call_llm(prompt, schema=schema)
+    
+    return call_llm(prompt, schema=schema, temperature=0.1, max_tokens=150)
 
 def generate_short_summary_with_lmstudio(page_text: str, doc_name: str, page_num: int) -> Dict:
-    """Genera un resumen corto para una página."""
     prompt = (
         f"Genera un resumen muy breve (máx. 3 frases) para la página {page_num} del documento '{doc_name}'.\n\n"
         f"Texto:\n{page_text}"
@@ -124,7 +159,6 @@ def generate_short_summary_with_lmstudio(page_text: str, doc_name: str, page_num
     return call_llm(prompt, schema=schema)
 
 def chat_with_context(context: str, question: str) -> str:
-    """Genera una respuesta basada en un contexto y una pregunta."""
     prompt = (
         "Basándote únicamente en el siguiente contexto, responde a la pregunta del usuario de forma clara y concisa. "
         "Si la respuesta no se encuentra en el contexto, indica que no tienes suficiente información.\n\n"

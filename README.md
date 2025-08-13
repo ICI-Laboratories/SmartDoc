@@ -1,22 +1,23 @@
 # SmartDoc: Asistente Inteligente de Documentos (Local-First)
 
-[cite_start]SmartDoc es una plataforma de software diseñada para la revisión y consulta inteligente de literatura científica, operando exclusivamente en el entorno local del usuario para garantizar la máxima confidencialidad[cite: 4]. [cite_start]Resuelve la sobrecarga informativa y los riesgos de privacidad asociados con las herramientas de IA basadas en la nube[cite: 3, 29].
+SmartDoc es una plataforma de software diseñada para la revisión y consulta inteligente de literatura científica, operando exclusivamente en el entorno local del usuario para garantizar la máxima confidencialidad. Resuelve la sobrecarga informativa y los riesgos de privacidad asociados con las herramientas de IA basadas en la nube.
 
-![Arquitectura de SmartDoc](https://i.imgur.com/your-architecture-diagram.png) ## Características Principales
+## ✨ Características Principales
 
-* **Procesamiento 100% Local**: Todos los componentes, desde el procesamiento de documentos hasta las consultas del LLM, se ejecutan en tu propia máquina. [cite_start]Tus documentos nunca salen de tu control[cite: 167, 168].
-* **Conversión PDF a Markdown**: Utiliza tecnologías modernas para convertir PDFs en Markdown estructurado, preservando el formato y facilitando análisis posteriores.
-* [cite_start]**Clasificación Automática con IA**: Organiza automáticamente tus documentos en categorías y subcategorías temáticas para una fácil navegación[cite: 6, 92].
-* [cite_start]**RAG Optimizado**: Emplea un enfoque de Generación Aumentada por Recuperación (RAG) que resume cada página de forma estructurada, permitiendo consultas eficientes y precisas en documentos largos o múltiples[cite: 5, 38, 39].
-* [cite_start]**Interfaz de Chat Interactiva**: Conversa con uno o varios documentos a la vez en lenguaje natural para extraer información, comparar hallazgos y obtener resúmenes[cite: 6, 36].
-* **Arquitectura de Microservicios Robusta**: Construido con una arquitectura escalable que incluye un API Gateway de alto rendimiento en Rust.
+  * **Procesamiento 100% Local**: Todos los componentes, desde el procesamiento de documentos hasta las consultas del LLM, se ejecutan en tu propia máquina. Tus documentos nunca salen de tu control.
+  * **Conversión Avanzada de PDF**: Utiliza tecnologías modernas para convertir PDFs en Markdown estructurado, preservando el formato y facilitando análisis posteriores.
+  * **Clasificación Automática con IA**: Organiza tus documentos en categorías y subcategorías temáticas para una fácil navegación.
+  * **RAG con Contexto Adaptativo**: Emplea un enfoque de Generación Aumentada por Recuperación (RAG) que, ante un gran volumen de información, aplica una estrategia de "resumen de resúmenes" para evitar exceder el límite de contexto del LLM, garantizando respuestas robustas sin importar la cantidad de documentos consultados.
+  * **Interfaz de Chat Interactiva**: Conversa con uno o varios documentos a la vez. El sistema extrae información, compara hallazgos y genera resúmenes citando siempre las fuentes.
+  * **Visor Dual de Documentos**: Explora tus archivos alternando fácilmente entre una vista de Markdown limpio y el visor del PDF original incrustado.
+  * **Arquitectura de Microservicios Robusta**: Construido con una arquitectura escalable que incluye un API Gateway de alto rendimiento en Rust.
 
 ## 🛠️ Pila Tecnológica
 
-* **Frontend**: Streamlit
-* **API Gateway**: Rust, Axum, Tokio, Rusqlite
-* **Servicio de Documentos**: Python, FastAPI
-* **Servicio de Lenguaje (IA)**: Python, FastAPI
+  * **Frontend**: Streamlit
+  * **API Gateway**: Rust (Axum, Tokio, Rusqlite)
+  * **Servicio de Documentos**: Python (FastAPI)
+  * **Servicio de Lenguaje (IA)**: Python (FastAPI)
 
 ## ⚙️ Requisitos Previos
 
@@ -26,26 +27,37 @@
 
 ## 🚀 Instalación y Ejecución
 
-#### 1. Clonar el Repositorio
+#### 1\. Clonar el Repositorio
 
 ```bash
 git clone <URL_DE_TU_REPOSITORIO>
-cd smartdoc_produccion
-````
+cd smartdoc
+```
 
 #### 2\. Configurar Variables de Entorno
 
-Crea un archivo `.env` en la raíz del proyecto y configúralo según tus necesidades. Puedes usar el archivo `.env.example` como plantilla.
+Crea un archivo `.env` en la raíz del proyecto. Puedes usar el siguiente template:
 
 ```bash
 # .env
 
-# Ruta base donde se guardarán todos los documentos procesados
-SMARTDOC_BASE="C:/SmartDocData" # Ejemplo para Windows
-# SMARTDOC_BASE="/home/tu_usuario/SmartDocData" # Ejemplo para Linux/macOS
+# ====== SmartDoc (Rutas y Configuración General) ======
+# Ruta base absoluta donde se guardarán todos los documentos procesados.
+SMARTDOC_BASE=D:\clasdocs
 
-# URL del servidor LLM que se está ejecutando localmente
-SMARTDOC_LLM_URL="http://localhost:1234/v1"
+# ====== Endpoints de los Microservicios (Déjalos así si ejecutas todo localmente) ======
+SMARTDOC_PROCESSOR_URL=http://127.0.0.1:8002
+SMARTDOC_LLM_URL=http://127.0.0.1:8001
+
+# ====== LM Studio (Configuración del Modelo de Lenguaje Local) ======
+# Endpoint compatible con la API de OpenAI de tu servidor local.
+SMARTDOC_LM_URL=http://localhost:1234/v1/chat/completions
+
+# El identificador del modelo que tienes cargado.
+SMARTDOC_MODEL=google/gemma-3-4b
+
+# Tiempo máximo de espera en segundos para las peticiones al LLM.
+SMARTDOC_LM_TIMEOUT=60
 ```
 
 #### 3\. Instalar Dependencias de Python
@@ -59,7 +71,7 @@ cd llm_service && pip install -r requirements.txt && cd ..
 # Para el servicio de documentos
 cd document_processor && pip install -r requirements.txt && cd ..
 
-# Para el frontend
+# Para el frontend (incluye streamlit-pdf-viewer)
 cd frontend && pip install -r requirements.txt && cd ..
 
 #### 4\. Ejecutar la Aplicación
@@ -86,21 +98,21 @@ Abre **4 terminales** y ejecuta un servicio en cada una.
 
     ```bash
     cd document_processor
-    uvicorn api:app --host 127.0.0.1 --port 8002
+    uvicorn app:app --host 127.0.0.1 --port 8002
     ```
 
   * **Terminal 4: Frontend (Streamlit)**
 
     ```bash
     cd frontend
-    streamlit run main.py
+    streamlit run app.py
     ```
 
 Una vez que todo esté en ejecución, abre tu navegador y ve a la dirección que te proporcionó Streamlit (usualmente `http://localhost:8501`).
 
 ## 👨‍💻 Uso de la API (para Desarrolladores)
 
-Todas las peticiones a los microservicios deben pasar a través del **API Gateway**. Para identificarse, el cliente (en este caso, el frontend de Streamlit) debe incluir un header HTTP:
+Todas las peticiones a los microservicios deben pasar a través del **API Gateway**. Para identificarse, el cliente (el frontend de Streamlit) debe incluir un header HTTP:
 
   * **Header**: `X-User-ID`
   * **Valor**: Un nombre de usuario único (ej. `juan-perez`)
@@ -109,12 +121,11 @@ El gateway usará este ID para crear una base de datos de usuarios y organizar l
 
 ## 🔮 Trabajo Futuro
 
-  * [cite\_start]Validación cuantitativa rigurosa con métricas estándar (e.g., ROUGE, BLEU)[cite: 226].
-  * [cite\_start]Pruebas de escalabilidad con un corpus de más de 200 artículos[cite: 226].
-  * [cite\_start]Optimización del rendimiento, especialmente en el módulo de conversión de PDF[cite: 227].
+  * Validación cuantitativa rigurosa con métricas estándar (e.g., ROUGE, BLEU).
+  * Pruebas de escalabilidad con un corpus de más de 200 artículos para refinar la estrategia de contexto.
+  * Optimización del rendimiento, especialmente en el módulo de conversión de PDF.
   * Soporte para más tipos de documentos (e.g., `.docx`, `.html`).
 
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia MIT. Consulta el archivo `LICENSE` para más detalles.
-
