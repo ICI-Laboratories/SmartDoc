@@ -129,15 +129,13 @@ Abre **4 terminales** y ejecuta un servicio en cada una.
   * **Terminal 2: LLM Service (Python)**
 
     ```bash
-    cd llm_service
-    uvicorn api:app --host 127.0.0.1 --port 8001
+    uvicorn llm_service.api:app --host 127.0.0.1 --port 8001
     ```
 
   * **Terminal 3: Document Processor (Python)**
 
     ```bash
-    cd document_processor
-    uvicorn app:app --host 127.0.0.1 --port 8002
+    uvicorn document_processor.app:app --host 127.0.0.1 --port 8002
     ```
 
   * **Terminal 4: Frontend (Streamlit)**
