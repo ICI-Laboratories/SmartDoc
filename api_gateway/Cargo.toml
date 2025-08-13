@@ -1,32 +1,39 @@
 # api_gateway/Cargo.toml
-
 [package]
 name = "api_gateway"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# El framework web moderno y asíncrono
-axum = "0.6"
+# Web framework
+axum = "0.7"
 
-# El runtime asíncrono estándar de Rust
-tokio = { version = "1", features = ["full"] }
+# Runtime async
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
 
-# Para serializar/deserializar JSON
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# HTTP client (necesitamos "stream" para bytes_stream)
+reqwest = { version = "0.11", features = ["json", "stream", "gzip", "brotli", "deflate"] }
 
-# Un cliente HTTP asíncrono y robusto para llamar a otros servicios
-reqwest = { version = "0.11", features = ["json"] }
+# SQLite + wrapper async
+rusqlite = { version = "0.31", features = ["bundled"] }
+tokio-rusqlite = "0.5"
 
-# El driver para SQLite, seguro y concurrente
-rusqlite = { version = "0.29", features = ["bundled"] }
-
-# Un HashMap concurrente y ultra-rápido para las métricas de usuarios
+# Concurrencia
 dashmap = "5.5"
 
-# Para manejar fechas y horas
-chrono = { version = "0.4", features = ["serde"] }
+# JSON
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
-# Para manejar errores de forma elegante
-anyhow = "1.0"
+# Observabilidad
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+# Middleware HTTP útil (trace + compresión)
+tower-http = { version = "0.5", features = ["trace", "compression-br", "compression-gzip", "compression-deflate"] }
+
+# Tipos HTTP (lo usa el builder en el proxy)
+http = "1"
+
+# Errores
+anyhow = "1"
