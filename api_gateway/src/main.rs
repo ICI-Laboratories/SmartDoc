@@ -1,11 +1,12 @@
+// api_gateway/src/main.rs
 mod database;
 
 use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
-    http::{self, StatusCode},
+    http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::{any, get},
     Json, Router,
 };
@@ -18,7 +19,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpListener;
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Clone)]
 struct AppState {
@@ -38,8 +39,8 @@ async fn main() {
     let llm_service_url = "http://127.0.0.1:8001".to_string();
 
     let http_client = Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(3))
-        .timeout(std::time::Duration::from_secs(15))
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(90))
         .pool_idle_timeout(std::time::Duration::from_secs(30))
         .build()
         .expect("no se pudo crear reqwest::Client");
@@ -56,6 +57,7 @@ async fn main() {
         llm_service_url,
     };
 
+    // GC simple de usuarios activos (TTL 5 min)
     {
         let active = state.active_users.clone();
         tokio::spawn(async move {
@@ -72,10 +74,7 @@ async fn main() {
         .route("/metrics", get(metrics_handler))
         .route("/process_document/*path", any(process_document_handler))
         .fallback(llm_handler)
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            user_validator,
-        ))
+        .layer(middleware::from_fn_with_state(state.clone(), user_validator))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -95,30 +94,28 @@ async fn user_validator(
         return Ok(next.run(req).await);
     }
 
-    let user_header = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok());
+    let user_header = req.headers().get("X-User-ID").and_then(|v| v.to_str().ok());
 
     match user_header {
         Some(username) if !username.is_empty() => {
-            let first_seen = state
+            if state
                 .active_users
                 .insert(username.to_string(), Instant::now())
-                .is_none();
-
-            if first_seen {
+                .is_none()
+            {
                 if let Err(e) = database::find_or_create_user(&state.db, username).await {
                     error!(%username, error=%e, "Error de base de datos");
                     return Err(StatusCode::INTERNAL_SERVER_ERROR);
                 }
             }
-
             Ok(next.run(req).await)
         }
         _ => {
-            let body = "<h1>401 Unauthorized</h1><p>Header 'X-User-ID' es requerido.</p>";
-            Ok((StatusCode::UNAUTHORIZED, Html(body)).into_response())
+            let body = Json(json!({
+                "error": "Header 'X-User-ID' es requerido y no puede estar vacío.",
+                "status": 401
+            }));
+            Ok((StatusCode::UNAUTHORIZED, body).into_response())
         }
     }
 }
@@ -133,74 +130,122 @@ async fn llm_handler(State(state): State<AppState>, req: Request) -> Response {
 
 async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
     let five_minutes_ago = Instant::now() - std::time::Duration::from_secs(300);
-
     let active_user_count = state
         .active_users
         .iter()
         .filter(|entry| *entry.value() > five_minutes_ago)
         .count();
 
-    let response_body = json!({
-        "active_users_last_5_minutes": active_user_count,
-        "total_tracked_users": state.active_users.len(),
-    });
-
-    (StatusCode::OK, Json(response_body))
+    (
+        StatusCode::OK,
+        Json(json!({
+            "active_users_last_5_minutes": active_user_count,
+            "total_tracked_users": state.active_users.len(),
+        })),
+    )
 }
+
+// -------------------- Proxy con conversiones explícitas --------------------
 
 async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response {
     let (parts, body) = req.into_parts();
-    let method_ax = parts.method;
+
     let path = parts.uri.path();
     let query = parts.uri.query().map(|q| format!("?{q}")).unwrap_or_default();
     let target_url = format!("{}{}{}", base_url.trim_end_matches('/'), path, query);
 
-    // 1) Método: http(1.x) -> reqwest/http(0.2)
-    let method_req =
-        reqwest::Method::from_bytes(method_ax.as_str().as_bytes()).unwrap_or(reqwest::Method::GET);
-
-    // 2) Headers: http(1.x) -> reqwest/http(0.2)
-    let headers_req = headers_to_reqwest(parts.headers.iter());
-
-    // 3) Cuerpo (límite 2MB de ejemplo)
-    let body_bytes = match to_bytes(body, 2 * 1024 * 1024).await {
+    // Limite de 50MB
+    let body_bytes = match to_bytes(body, 50 * 1024 * 1024).await {
         Ok(b) => b,
-        Err(e) => return (StatusCode::BAD_REQUEST, Html(format!("Cuerpo inválido: {e}"))).into_response(),
+        Err(e) => {
+            warn!("Cuerpo de la petición inválido o demasiado grande: {e}");
+            let body = Json(json!({
+                "error": "Cuerpo de la petición inválido o demasiado grande.",
+                "detail": e.to_string(),
+                "status": 400
+            }));
+            return (StatusCode::BAD_REQUEST, body).into_response();
+        }
     };
 
+    // --- Conversión de tipos entre http v1 (axum) y http v0.2 (reqwest 0.11) ---
+    let method = method_to_reqwest(&parts.method);
+    let req_headers = headers_axum_to_reqwest(&parts.headers);
+
     let reqwest_req = client
-        .request(method_req, &target_url)
-        .headers(headers_req)
+        .request(method, &target_url)
+        .headers(req_headers)
         .body(body_bytes);
 
     match reqwest_req.send().await {
         Ok(resp) => {
-            // 4) Status: reqwest/http(0.2) -> http(1.x)
-            let status =
-                http::StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-
-            // 5) Headers: reqwest/http(0.2) -> http(1.x)
-            let headers_ax = headers_from_reqwest(resp.headers().iter());
+            // Status: reqwest::StatusCode (http 0.2) -> axum::http::StatusCode (http 1)
+            let status = StatusCode::from_u16(resp.status().as_u16())
+                .unwrap_or(StatusCode::BAD_GATEWAY);
 
             let mut builder = Response::builder().status(status);
-            if let Some(h) = builder.headers_mut() {
-                *h = headers_ax;
+
+            // Copiar headers respuesta: reqwest -> axum (filtrando hop-by-hop)
+            if let Some(hm) = builder.headers_mut() {
+                for (name, value) in resp.headers().iter() {
+                    if !is_hop_by_hop(name.as_str()) {
+                        if let (Ok(n), Ok(v)) = (
+                            HeaderName::from_bytes(name.as_str().as_bytes()),
+                            HeaderValue::from_bytes(value.as_bytes()),
+                        ) {
+                            hm.insert(n, v);
+                        }
+                    }
+                }
             }
+
+            // Streaming de cuerpo
             builder
                 .body(Body::from_stream(resp.bytes_stream()))
-                .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, Html("Error creando respuesta")).into_response())
+                .unwrap_or_else(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Error creando respuesta",
+                    )
+                        .into_response()
+                })
         }
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Html(format!(
-                "<h1>502 Bad Gateway</h1><p>Error al contactar el servicio interno: {e}</p>"
-            )),
-        )
-            .into_response(),
+        Err(e) => {
+            error!("Error al contactar el servicio interno en {target_url}: {e}");
+            let error_body = Json(json!({
+                "error": "No se pudo contactar con el servicio interno.",
+                "detail": e.to_string(),
+                "status": 502
+            }));
+            (
+                StatusCode::BAD_GATEWAY,
+                [(header::CONTENT_TYPE, "application/json")],
+                error_body,
+            )
+                .into_response()
+        }
     }
 }
 
-// --------- Helpers de headers / hop-by-hop ---------
+fn method_to_reqwest(method: &Method) -> reqwest::Method {
+    // Evita TryFrom entre crates `http` distintos
+    reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET)
+}
+
+fn headers_axum_to_reqwest(headers: &HeaderMap<HeaderValue>) -> reqwest::header::HeaderMap {
+    let mut out = reqwest::header::HeaderMap::new();
+    for (name, value) in headers.iter() {
+        if !is_hop_by_hop(name.as_str()) {
+            if let (Ok(n), Ok(v)) = (
+                reqwest::header::HeaderName::from_bytes(name.as_str().as_bytes()),
+                reqwest::header::HeaderValue::from_bytes(value.as_bytes()),
+            ) {
+                out.insert(n, v);
+            }
+        }
+    }
+    out
+}
 
 fn is_hop_by_hop(name: &str) -> bool {
     matches!(
@@ -210,51 +255,9 @@ fn is_hop_by_hop(name: &str) -> bool {
             | "proxy-authenticate"
             | "proxy-authorization"
             | "te"
-            | "trailer"
             | "trailers"
             | "transfer-encoding"
             | "upgrade"
             | "host"
-            | "content-length"
     )
-}
-
-/// Convierte `http(1.x)::HeaderMap` -> `reqwest/http(0.2)::HeaderMap` filtrando hop-by-hop
-fn headers_to_reqwest<'a>(
-    headers: impl Iterator<Item = (&'a http::HeaderName, &'a http::HeaderValue)>,
-) -> reqwest::header::HeaderMap {
-    let mut out = reqwest::header::HeaderMap::new();
-    for (name, value) in headers {
-        let n = name.as_str();
-        if is_hop_by_hop(n) {
-            continue;
-        }
-        if let (Ok(n2), Ok(v2)) = (
-            reqwest::header::HeaderName::from_bytes(n.as_bytes()),
-            reqwest::header::HeaderValue::from_bytes(value.as_bytes()),
-        ) {
-            out.append(n2, v2);
-        }
-    }
-    out
-}
-
-/// Convierte `reqwest/http(0.2)::HeaderMap` -> `http(1.x)::HeaderMap` filtrando hop-by-hop
-fn headers_from_reqwest<'a>(
-    headers: impl Iterator<Item = (&'a reqwest::header::HeaderName, &'a reqwest::header::HeaderValue)>,
-) -> http::HeaderMap {
-    let mut out = http::HeaderMap::new();
-    for (name, value) in headers {
-        let n = name.as_str();
-        if is_hop_by_hop(n) {
-            continue;
-        }
-        if let (Ok(n2), Ok(v2)) = (
-            http::HeaderName::from_bytes(n.as_bytes()),
-            http::HeaderValue::from_bytes(value.as_bytes()),
-        ) {
-            out.append(n2, v2);
-        }
-    }
-    out
 }

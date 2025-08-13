@@ -1,7 +1,8 @@
 # llm_service/api.py
 
+import logging
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Tuple
 
 # --- Imports explícitos desde los módulos de lógica ---
@@ -15,19 +16,24 @@ from llm_service.logic.docs import (
     get_relevant_pages_from_summary,
     chat_with_multiple_docs,
 )
+# --- INICIO DE LA MODIFICACIÓN ---
+from llm_service.logic.analysis import hybrid_search_in_docs, calculate_document_similarity
+# --- FIN DE LA MODIFICACIÓN ---
 
-# --- Modelos de Datos ---
+logger = logging.getLogger(__name__)
+
+# ------------------------- Modelos de Datos -------------------------
 class ClassifyRequest(BaseModel):
-    text: str
+    text: str = Field(..., min_length=1, description="Texto a clasificar")
     categories: Dict
 
 class SummarizeChunkRequest(BaseModel):
-    pages: List[Tuple[int, str]]
+    pages: List[Tuple[int, str]] = Field(..., description="Lista de (número_página, texto)")
 
 class ShortSummaryRequest(BaseModel):
     page_text: str
     doc_name: str
-    page_num: int
+    page_num: int = Field(..., ge=0)
 
 class ChatRequest(BaseModel):
     context: str
@@ -42,16 +48,46 @@ class MultiDocChatRequest(BaseModel):
     doc_paths: List[str]
     question: str
 
-# --- Inicialización de la Aplicación ---
+class SemanticSearchRequest(BaseModel):
+    doc_paths: List[str] = Field(..., min_items=1, description="Rutas absolutas o relativas a archivos .md")
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(5, ge=1, le=50, description="Número máximo de resultados a devolver (1-50)")
+
+    @validator("doc_paths", each_item=True)
+    def _non_empty_paths(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Cada ruta de documento debe ser una cadena no vacía.")
+        return v
+
+# --- INICIO DE LA MODIFICACIÓN: Nuevo Modelo para Similitud ---
+class DocumentSimilarityRequest(BaseModel):
+    doc_paths: List[str] = Field(..., min_items=2, description="Al menos dos documentos para comparar")
+
+    @validator("doc_paths", each_item=True)
+    def _non_empty_paths_sim(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Cada ruta de documento debe ser una cadena no vacía.")
+        return v
+# --- FIN DE LA MODIFICACIÓN ---
+
+
+# ------------------------- Inicialización App -------------------------
+tags_metadata = [
+    {"name": "classification", "description": "Clasificación y resúmenes"},
+    {"name": "chat", "description": "Chat con contexto y múltiples documentos"},
+    {"name": "analysis", "description": "Búsqueda híbrida y similitud entre documentos"},
+    {"name": "health", "description": "Estado del servicio"},
+]
+
 app = FastAPI(
     title="SmartDoc LLM Service",
-    version="1.0",
-    description="Microservicio para todas las interacciones con el modelo de lenguaje (clasificación, resumen, chat).",
+    version="1.2",  # Versión incrementada
+    description="Microservicio para interacciones con el LLM y análisis de documentos.",
+    openapi_tags=tags_metadata,
 )
 
-# --- Endpoints ---
-
-@app.post("/classify", response_model=Dict, summary="Clasifica un fragmento de texto")
+# ------------------------------ Endpoints ------------------------------
+@app.post("/classify", response_model=Dict, summary="Clasifica un fragmento de texto", tags=["classification"])
 def classify_text_ep(request: ClassifyRequest):
     try:
         main_cat, sub_cat = classify_text_with_lmstudio(request.text, request.categories)
@@ -59,38 +95,86 @@ def classify_text_ep(request: ClassifyRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error durante la clasificación: {str(e)}")
 
-@app.post("/summarize_chunk", response_model=Dict, summary="Resume un bloque de páginas")
+@app.post("/summarize_chunk", response_model=Dict, summary="Resume un bloque de páginas", tags=["classification"])
 def summarize_chunk_ep(request: SummarizeChunkRequest):
     result = summarize_chunk_with_lmstudio(request.pages)
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
     return result
 
-@app.post("/generate_short_summary", response_model=Dict, summary="Genera un resumen corto para una página")
+@app.post("/generate_short_summary", response_model=Dict, summary="Genera un resumen corto para una página", tags=["classification"])
 def generate_short_summary_ep(request: ShortSummaryRequest):
     result = generate_short_summary_with_lmstudio(request.page_text, request.doc_name, request.page_num)
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
     return result
 
-@app.post("/chat_with_context", response_model=Dict, summary="Chatea con un contexto específico")
+@app.post("/chat_with_context", response_model=Dict, summary="Chatea con un contexto específico", tags=["chat"])
 def chat_with_context_ep(request: ChatRequest):
     answer = chat_with_context_fn(request.context, request.question)
     return {"answer": answer}
 
-@app.post("/get_relevant_pages", response_model=Dict, summary="Encuentra páginas relevantes de un documento")
+@app.post("/get_relevant_pages", response_model=Dict, summary="Encuentra páginas relevantes de un documento", tags=["classification"])
 def get_relevant_pages_ep(request: RelevantPagesRequest):
     result = get_relevant_pages_from_summary(request.summary, request.question)
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
     return result
 
-@app.post("/chat_with_multiple_docs", response_model=Dict, summary="Orquesta un chat con múltiples documentos")
+@app.post("/chat_with_multiple_docs", response_model=Dict, summary="Orquesta un chat con múltiples documentos", tags=["chat"])
 def chat_with_multiple_docs_ep(request: MultiDocChatRequest):
     answer = chat_with_multiple_docs(request.summaries, request.doc_paths, request.question)
     return {"answer": answer}
 
-@app.get("/", summary="Endpoint de estado")
+@app.post("/analyze/semantic_search", response_model=Dict, summary="Búsqueda HÍBRIDA en documentos", tags=["analysis"])
+def semantic_search_ep(request: SemanticSearchRequest):
+    """
+    Busca *chunks* de texto relevantes combinando:
+    - **Semántica** (embeddings) y
+    - **BM25** (palabras clave).
+    """
+    try:
+        query = request.query.strip()
+        if not query:
+            raise HTTPException(status_code=422, detail="La consulta de búsqueda no puede estar vacía.")
+
+        results = hybrid_search_in_docs(
+            doc_paths=request.doc_paths,
+            query=query,
+            top_k=request.top_k
+        )
+        # Si la lógica devuelve un error controlado, lo propagamos como 500 para mantener contrato actual
+        if isinstance(results, list) and results and isinstance(results[0], dict) and "error" in results[0]:
+            raise HTTPException(status_code=500, detail=results[0]["error"])
+
+        return {"results": results}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fatal durante la búsqueda híbrida: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+# --- INICIO DE LA MODIFICACIÓN: Nuevo Endpoint de Similitud ---
+@app.post("/analyze/document_similarity", response_model=Dict, summary="Calcula la similitud entre documentos", tags=["analysis"])
+def document_similarity_ep(request: DocumentSimilarityRequest):
+    """
+    Recibe una lista de rutas de documentos y devuelve una matriz de similitud
+    comparando cada documento con todos los demás.
+    """
+    try:
+        results = calculate_document_similarity(doc_paths=request.doc_paths)
+        if isinstance(results, dict) and "error" in results:
+            # Propagamos como 500 para mantener el patrón de error centralizado
+            raise HTTPException(status_code=500, detail=results.get("error", "Error en cálculo de similitud"))
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fatal durante el cálculo de similitud: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+# --- FIN DE LA MODIFICACIÓN ---
+
+@app.get("/", summary="Endpoint de estado", tags=["health"])
 def read_root():
     """Endpoint simple para verificar que el servicio está en funcionamiento."""
     return {"status": "LLM Service is running"}

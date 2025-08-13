@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Optional, List
 
 import httpx
+import numpy as np
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sentence_transformers import SentenceTransformer
 
 # 👇 Imports absolutos desde el paquete document_processor
 from document_processor.core_pdf import convert_pdf_to_markdown, extract_pages_from_text
@@ -30,22 +32,23 @@ if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
 
+# --- INICIO DE LA MODIFICACIÓN: Cargar modelo de embeddings ---
+try:
+    # Carga el modelo de embeddings una sola vez cuando la aplicación arranca.
+    # 'all-MiniLM-L6-v2' es un modelo excelente, rápido y multilingüe.
+    EMBEDDING_MODEL = SentenceTransformer('BAAI/bge-large-en-v1.5')
+    logger.info("Modelo de SentenceTransformer 'all-MiniLM-L6-v2' cargado correctamente.")
+except Exception as e:
+    logger.error(f"FATAL: No se pudo cargar el modelo de SentenceTransformer: {e}")
+    EMBEDDING_MODEL = None
+# --- FIN DE LA MODIFICACIÓN ---
+
+
 # ---------------- Settings + seguridad ----------------
 class Settings(BaseSettings):
-    # ==================================================================
-    # ========= INICIO DE LA MODIFICACIÓN: .env loading ===============
-    # ==================================================================
-    
-    # Define el modelo de configuración para pydantic-settings
-    # Busca un archivo .env en la carpeta raíz del proyecto (dos niveles arriba de este archivo)
     model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
 
-    # ==================================================================
-    # ============== FIN DE LA MODIFICACIÓN ============================
-    # ==================================================================
-
     llm_service_url: str = Field(default="http://127.0.0.1:8001")
-    # La variable BASE ahora será leída del .env gracias al prefijo SMARTDOC_
     base_dir: Path = Field(alias="SMARTDOC_BASE", default=Path.home() / "SmartDocData")
     enable_cors: bool = True
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
@@ -72,7 +75,7 @@ async def require_api_key(request: Request, settings: Settings = Depends(get_set
 
 
 # ---------------- App ----------------
-app = FastAPI(title="SmartDoc Document Processor", version="1.4")
+app = FastAPI(title="SmartDoc Document Processor", version="1.5") # Versión incrementada
 _settings = get_settings()
 
 if _settings.enable_cors:
@@ -192,6 +195,32 @@ async def process_document(
         output_path=summary_path,
         original_filename=file.filename,
     )
+    
+    # --- INICIO DE LA MODIFICACIÓN: Creación de Vectores ---
+    if EMBEDDING_MODEL:
+        try:
+            # Dividir el markdown en chunks (párrafos) para una búsqueda más granular.
+            # Se filtran chunks muy cortos para evitar ruido.
+            text_chunks = [p.strip() for p in markdown_content.split('\n\n') if len(p.strip()) > 30]
+            
+            if text_chunks:
+                logger.info(f"Generando {len(text_chunks)} vectores para '{file.filename}'...")
+                # Codificar los chunks de texto en vectores numéricos.
+                embeddings = EMBEDDING_MODEL.encode(text_chunks, show_progress_bar=False, convert_to_numpy=True)
+                
+                # Guardar los vectores y los chunks de texto correspondientes en un único archivo comprimido.
+                vector_path = md_path.with_suffix(".npz")
+                np.savez_compressed(vector_path, embeddings=embeddings, chunks=np.array(text_chunks, dtype=object))
+                logger.info(f"Vectores para '{file.filename}' guardados en: {vector_path}")
+            else:
+                logger.warning(f"No se encontraron chunks de texto suficientemente largos para vectorizar en '{file.filename}'.")
+
+        except Exception as e:
+            # Capturamos cualquier error durante la vectorización para no detener todo el proceso.
+            logger.error(f"Fallo al crear o guardar los vectores para '{file.filename}': {e}")
+    else:
+        logger.warning("El modelo de embeddings no está cargado. Se omitirá el paso de vectorización.")
+    # --- FIN DE LA MODIFICACIÓN ---
 
     logger.info("Procesado y resumido %s en %.2fs -> %s", file.filename, time.perf_counter() - t0, md_path)
 
