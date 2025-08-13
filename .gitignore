@@ -6,6 +6,7 @@ __pycache__/
 # Environments
 .env/
 .env.*
+
 .venv
 env/
 venv/
@@ -19,7 +20,6 @@ build/
 dist/
 develop-eggs/
 *.egg-info/
-lib/
 lib64/
 parts/
 sdist/
@@ -75,3 +75,6 @@ build.rs
 .vscode/
 
 api_gateway/target/
+api_gateway/smartdoc_users.db
+api_gateway/smartdoc_users.db-shm
+api_gateway/smartdoc_users.db-wal
