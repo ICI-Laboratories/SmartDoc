@@ -16,11 +16,11 @@ pub async fn init(path: &Path) -> Result<Db> {
 
     // La closure devuelve tokio_rusqlite::Result, y convertimos errores con Into::into
     conn.call(|c: &mut rusqlite::Connection| -> tokio_rusqlite::Result<()> {
-        c.pragma_update(None, "journal_mode", "WAL").map_err(Into::into)?;
-        c.pragma_update(None, "synchronous", "NORMAL").map_err(Into::into)?;
-        c.pragma_update(None, "foreign_keys", "ON").map_err(Into::into)?;
+        c.pragma_update(None, "journal_mode", "WAL").map_err(tokio_rusqlite::Error::from)?;
+        c.pragma_update(None, "synchronous", "NORMAL").map_err(tokio_rusqlite::Error::from)?;
+        c.pragma_update(None, "foreign_keys", "ON").map_err(tokio_rusqlite::Error::from)?;
         let _ = c.pragma_update(None, "wal_autocheckpoint", &1000i64);
-        c.busy_timeout(StdDuration::from_secs(5)).map_err(Into::into)?;
+        c.busy_timeout(StdDuration::from_secs(5)).map_err(tokio_rusqlite::Error::from)?;
 
         c.execute(
             "CREATE TABLE IF NOT EXISTS users (
@@ -29,7 +29,7 @@ pub async fn init(path: &Path) -> Result<Db> {
                 created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
             )",
             [],
-        ).map_err(Into::into)?;
+        ).map_err(tokio_rusqlite::Error::from)?;
 
         Ok(())
     }).await?; // <- un solo `?` (tokio_rusqlite::Result)
@@ -45,7 +45,7 @@ pub async fn find_or_create_user(db: &Db, username: &str) -> Result<()> {
         c.execute(
             "INSERT OR IGNORE INTO users (username) VALUES (?1)",
             [&username],
-        ).map_err(Into::into)?;
+        ).map_err(tokio_rusqlite::Error::from)?;
         Ok(())
     }).await?; // <- un solo `?`
 

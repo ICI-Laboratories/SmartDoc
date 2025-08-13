@@ -78,36 +78,118 @@ def _unique_path(base: Path) -> Path:
 # Conversión de documentos (PDF→MD)
 # --------------------------------
 
-def convert_pdf_to_markdown(pdf_bytes: bytes) -> str:
+def convert_pdf_to_markdown(
+    pdf_bytes: bytes,
+    *,
+    max_num_pages: Optional[int] = None,
+    max_file_size: Optional[int] = None,
+    enable_remote_services: bool = False,
+    table_mode: str = "ACCURATE",      # "ACCURATE" | "FAST"
+    image_mode: str = "PLACEHOLDER",   # "PLACEHOLDER" | "EMBEDDED" | "REFERENCED"
+    images_scale: float = 1.5,         # solo aplica si EMBEDDED/REFERENCED
+) -> str:
     """
-    Convierte el contenido de un PDF (bytes) a Markdown.
-    Lanza ValueError si pdf_bytes está vacío.
+    Convierte el contenido de un PDF (bytes) a Markdown usando Docling.
+
+    - Soporta límites por tamaño/páginas.
+    - Reconstruye tablas.
+    - Soporta imágenes como marcadores, embebidas o referenciadas (ver nota abajo).
+
+    Variables de entorno soportadas (opcionales):
+    - DOCLING_ARTIFACTS_PATH: ruta local de modelos ya descargados.
+    - DOCLING_ENABLE_REMOTE: "1"/"true" para permitir servicios remotos (OCR cloud, etc.).
+    - DOCLING_TABLE_MODE: "FAST" | "ACCURATE".
+    - DOCLING_MD_IMAGE_MODE: "PLACEHOLDER" | "EMBEDDED" | "REFERENCED".
+    - DOCLING_IMAGES_SCALE: float (>=1.0), resolución de imágenes.
     """
     if not pdf_bytes:
         raise ValueError("Se recibieron bytes vacíos para el PDF.")
 
     try:
-        # Ejemplo real (cuando integres docling):
-        # md = docling.from_bytes(pdf_bytes).to_markdown()
-
-        # --- Placeholder de demostración ---
-        md = (
-            "# Documento Convertido\n\n"
-            "Ejemplo de contenido convertido a Markdown.\n\n"
-            "## Sección 1\n\n"
-            "- Punto A\n- Punto B\n\n"
-            "## Tablas y Datos\n\n"
-            "| Métrica | Valor |\n|---|---|\n| Tasa de Éxito | 95% |\n"
+        import os
+        from io import BytesIO
+        # Docling (alto nivel)
+        from docling.document_converter import DocumentConverter, PdfFormatOption
+        # Tipos/base para flujos binarios y formatos
+        from docling.datamodel.base_models import InputFormat, DocumentStream
+        # Opciones de pipeline PDF (OCR, tablas, etc.)
+        from docling.datamodel.pipeline_options import (
+            PdfPipelineOptions,
+            TableFormerMode,
         )
-        # --- Fin placeholder ---
+        # Control de cómo referenciar imágenes en el Markdown
+        from docling_core.types.doc import ImageRefMode
+
+        # --- Config vía parámetros o entorno ---
+        artifacts_path = os.getenv("DOCLING_ARTIFACTS_PATH") or None
+        enable_remote_env = os.getenv("DOCLING_ENABLE_REMOTE", "").lower() in {"1", "true", "yes"}
+        table_mode_env = (os.getenv("DOCLING_TABLE_MODE") or table_mode).upper()
+        image_mode_env = (os.getenv("DOCLING_MD_IMAGE_MODE") or image_mode).upper()
+        images_scale_env = float(os.getenv("DOCLING_IMAGES_SCALE", images_scale))
+
+        # Opciones del pipeline PDF
+        pipeline_opts = PdfPipelineOptions(
+            artifacts_path=artifacts_path,
+            enable_remote_services=enable_remote_services or enable_remote_env,
+            do_table_structure=True,  # mantiene la estructura de tablas
+        )
+
+        # Modo del TableFormer: ACCURATE (por defecto) o FAST
+        if table_mode_env in {"FAST", "ACCURATE"}:
+            pipeline_opts.table_structure_options.mode = getattr(TableFormerMode, table_mode_env)
+
+        # Manejo de imágenes (Docling descarta imágenes para ahorrar memoria a menos que se pidan)
+        # PLACEHOLDER no guarda ni embebe; EMBEDDED/REFERENCED requieren generar imágenes.
+        image_mode_map = {
+            "PLACEHOLDER": ImageRefMode.PLACEHOLDER,
+            "EMBEDDED": ImageRefMode.EMBEDDED,
+            "REFERENCED": ImageRefMode.REFERENCED,
+        }
+        image_ref_mode = image_mode_map.get(image_mode_env, ImageRefMode.PLACEHOLDER)
+        if image_ref_mode in (ImageRefMode.EMBEDDED, ImageRefMode.REFERENCED):
+            pipeline_opts.images_scale = images_scale_env
+            pipeline_opts.generate_page_images = True
+            pipeline_opts.generate_picture_images = True
+
+        # Construimos el convertidor con las opciones para PDF
+        converter = DocumentConverter(
+            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_opts)}
+        )
+
+        # Fuente: flujo binario en memoria
+        source = DocumentStream(name="upload.pdf", stream=BytesIO(pdf_bytes))
+
+        # Límites (opcionales)
+        convert_kwargs = {}
+        if max_num_pages is not None:
+            convert_kwargs["max_num_pages"] = int(max_num_pages)
+        if max_file_size is not None:
+            convert_kwargs["max_file_size"] = int(max_file_size)
+
+        # Convertir
+        result = converter.convert(source, **convert_kwargs)
+
+        # Exportar a Markdown (con el modo de imágenes elegido)
+        md = result.document.export_to_markdown(image_mode=image_ref_mode)
 
         return md.strip()
 
     except Exception as e:
-        logger.exception("Error durante la conversión de PDF a Markdown: %s", e)
-        # Relevanta la excepción para que el caller decida cómo proceder
+        # Agregamos contexto útil en logs
+        logger.exception("Error durante la conversión con Docling: %s", e)
         raise
 
+
+def convert_pdf_to_lossless_json(pdf_bytes: bytes) -> dict:
+    if not pdf_bytes:
+        raise ValueError("Se recibieron bytes vacíos para el PDF.")
+    from io import BytesIO
+    from docling.document_converter import DocumentConverter
+    from docling.datamodel.base_models import DocumentStream
+    converter = DocumentConverter()
+    res = converter.convert(DocumentStream(name="upload.pdf", stream=BytesIO(pdf_bytes)))
+    # Estructura completa (texto, tablas, bounding boxes, etc.)
+    return res.document.export_to_dict()
 
 # -------------------------------------
 # Estructura de carpetas y guardado I/O

@@ -172,7 +172,6 @@ with tabs[0]:
         "Sube uno o más archivos PDF. El sistema los convertirá, clasificará con IA "
         "y los organizará automáticamente en tu carpeta de datos."
     )
-
     with st.form("upload_form", clear_on_submit=False):
         uploaded_files = st.file_uploader(
             "Arrastra tus archivos PDF aquí o haz clic para seleccionar",
@@ -180,8 +179,8 @@ with tabs[0]:
             accept_multiple_files=True,
             key="pdf_uploader",
         )
-        submit_uploads = st.form_submit_button("Iniciar Procesamiento", disabled=not uploaded_files)
-
+        # ¡No lo deshabilites aquí!
+        submit_uploads = st.form_submit_button("Iniciar Procesamiento")
     def _upload_one(file):
         files_payload = {"file": (file.name, file.getvalue(), file.type)}
         data_payload = {"username": USERNAME}
@@ -323,8 +322,7 @@ with tabs[2]:
                 height=100,
             )
             submit_q = st.form_submit_button(
-                "Enviar Pregunta",
-                disabled=not st.session_state.selected_docs or not question,
+                "Enviar Pregunta"
             )
 
         if submit_q:
