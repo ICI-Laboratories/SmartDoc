@@ -4,7 +4,8 @@ __pycache__/
 *$py.class
 
 # Environments
-.env
+.env/
+.env.*
 .venv
 env/
 venv/
@@ -43,3 +44,34 @@ wheels/
 # OS generated files #
 .DS_Store
 Thumbs.db
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Cargo package files
+Cargo.lock
+Cargo.toml.orig
+
+# Rust/Cargo specific
+/.cargo/
+.cargo/
+*.crate
+
+# Rust build scripts output
+build.rs
+
+# Rust coverage/debug/test output
+/coverage/
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.gcov
+
+# IDEs and editors
+.idea/
+*.iml
+.vscode/
+
+api_gateway/target/
