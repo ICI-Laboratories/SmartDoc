@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import (
@@ -15,13 +16,12 @@ from fastapi import (
     FastAPI,
     File,
     Form,
-    Header,
     HTTPException,
-    UploadFile,
     Request,
+    UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 import logic  # tu módulo mejorado
@@ -29,6 +29,29 @@ import logic  # tu módulo mejorado
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
+
+
+# -----------------------------
+# Helper para parsear páginas
+# -----------------------------
+
+def _extract_pages_from_text(text: str) -> List[Tuple[int, str]]:
+    """
+    Extrae páginas del texto que usa el formato '--- Página X ---'.
+    """
+    pattern = r'--- Página\s+(\d+)\s+---'
+    parts = re.split(pattern, text)
+    pages = []
+    # Itera sobre los resultados del split para obtener pares (número, texto)
+    for i in range(1, len(parts), 2):
+        try:
+            page_num = int(parts[i])
+            page_text = parts[i + 1].strip()
+            if page_text:  # Solo añade páginas con contenido
+                pages.append((page_num, page_text))
+        except (ValueError, IndexError):
+            continue
+    return pages
 
 
 # -----------------------------
@@ -40,13 +63,10 @@ class Settings(BaseSettings):
     base_dir: Path = Field(default=Path.home() / "SmartDocData")
     enable_cors: bool = True
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
-    # Seguridad sencilla opcional
     require_api_key: bool = False
     api_key_header_name: str = "x-api-key"
     api_key_value: Optional[str] = None
-
-    # Límites
-    max_pdf_bytes: int = 30 * 1024 * 1024  # 30 MB
+    max_pdf_bytes: int = 30 * 1024 * 1024
     classify_snippet_len: int = 4000
     http_timeout_seconds: float = 20.0
 
@@ -54,10 +74,8 @@ class Settings(BaseSettings):
         env_prefix = "SMARTDOC_"
         case_sensitive = False
 
-
 def get_settings() -> Settings:
     s = Settings()
-    # Asegura base_dir creada
     s.base_dir.mkdir(parents=True, exist_ok=True)
     return s
 
@@ -66,19 +84,11 @@ def get_settings() -> Settings:
 # Seguridad simple por API Key
 # --------------------------------
 
-async def require_api_key(
-    request: Request,
-    settings: Settings = Depends(get_settings),
-):
-    """
-    Verifica API key si está habilitada.
-    """
+async def require_api_key(request: Request, settings: Settings = Depends(get_settings)):
     if not settings.require_api_key:
         return
-
     header_name = settings.api_key_header_name
     provided = request.headers.get(header_name)
-
     if not provided or settings.api_key_value is None or provided != settings.api_key_value:
         raise HTTPException(status_code=401, detail=f"API key inválida o ausente en header '{header_name}'.")
 
@@ -145,7 +155,6 @@ async def _retry(coro_func, *args, retries: int = 2, delay: float = 1.0, **kwarg
     raise last_exc
 
 
-# **AQUÍ ESTÁ LA CORRECCIÓN**
 async def create_and_save_summary_async(
     markdown_text: str,
     settings: Settings,
@@ -153,7 +162,7 @@ async def create_and_save_summary_async(
     original_filename: str,
 ):
     """
-    Llama al LLM para generar un resumen y lo guarda en formato JSON.
+    Llama al LLM para generar un resumen para cada página y lo guarda.
     """
     summary_data = {
         "title": original_filename,
@@ -161,31 +170,31 @@ async def create_and_save_summary_async(
         "blocks": [],
     }
 
-    # Esta función ahora llama al endpoint correcto (/summarize_chunk)
-    # y envía el payload en el formato esperado.
-    async def call_summarize_chunk(text_chunk: str):
-        # El endpoint espera una lista de tuplas (número_página, texto_página).
-        # Como aquí tenemos un solo bloque, lo envolvemos como la página 1.
-        payload = {"pages": [[1, text_chunk]]}
+    # --- INICIO DE LA CORRECCIÓN ---
+    # 1. Parsea el texto en páginas individuales
+    pages = _extract_pages_from_text(markdown_text)
+
+    # 2. Define la función que llama al LLM para un chunk de páginas
+    async def call_summarize_chunk(pages_chunk: List[Tuple[int, str]]):
+        payload = {"pages": pages_chunk}
         async with _httpx_client(settings) as client:
-            # Se llama al endpoint correcto
             r = await client.post("/summarize_chunk", json=payload)
             r.raise_for_status()
             return r.json()
 
-    try:
-        # Aquí enviamos todo el markdown como un solo chunk.
-        # En una versión más avanzada, podrías dividir el markdown por páginas o secciones.
+    # 3. Itera sobre cada página y la resume
+    for page_num, page_content in pages:
         try:
-            result = await _retry(call_summarize_chunk, markdown_text, retries=1, delay=1.5)
+            # Enviamos cada página como un chunk de una sola página
+            result = await _retry(call_summarize_chunk, [(page_num, page_content)], retries=1, delay=1.5)
             block = result if isinstance(result, dict) else {"summary": str(result)}
             summary_data["blocks"].append(block)
         except Exception as e:
-            logger.warning("Fallo al llamar a /summarize_chunk, se usará contenido placeholder: %s", e)
-            summary_data["blocks"].append(
-                {"summary": "Este es un resumen de ejemplo generado en segundo plano."}
-            )
+            logger.warning("Fallo al llamar a /summarize_chunk para pág %s, se usará placeholder: %s", page_num, e)
+            summary_data["blocks"].append({"summary": f"Resumen de ejemplo para la página {page_num}."})
+    # --- FIN DE LA CORRECCIÓN ---
 
+    try:
         logic.save_hierarchical_summary(summary_data, output_path)
         logger.info("Resumen guardado en %s", output_path)
     except Exception as e:
@@ -198,9 +207,7 @@ def create_and_save_summary(
     output_path: Path,
     original_filename: str,
 ):
-    """
-    Wrapper sync para BackgroundTasks (lanza una tarea asyncio).
-    """
+    """Wrapper síncrono para BackgroundTasks."""
     asyncio.run(
         create_and_save_summary_async(
             markdown_text=markdown_text,
@@ -227,13 +234,6 @@ async def process_document(
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings),
 ):
-    """
-    Pipeline:
-      1) PDF -> Markdown
-      2) Clasificación vía LLM
-      3) Guardado atómico (MD/PDF)
-      4) Tarea en segundo plano para resumen
-    """
     t0 = time.perf_counter()
 
     if not file.filename:
@@ -275,18 +275,10 @@ async def process_document(
     filename_base = Path(file.filename).stem
     try:
         md_path = logic.save_markdown_to_folder(
-            markdown_content,
-            user_folder,
-            filename_base,
-            main_cat,
-            sub_cat,
+            markdown_content, user_folder, filename_base, main_cat, sub_cat
         )
         pdf_path = logic.save_pdf_to_folder(
-            pdf_bytes,
-            user_folder,
-            file.filename,
-            main_cat,
-            sub_cat,
+            pdf_bytes, user_folder, file.filename, main_cat, sub_cat
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar archivos en el disco: {e}")
@@ -303,13 +295,7 @@ async def process_document(
     )
 
     elapsed = time.perf_counter() - t0
-    logger.info(
-        "Procesado %s en %.2fs -> %s / %s",
-        file.filename,
-        elapsed,
-        md_path,
-        pdf_path,
-    )
+    logger.info("Procesado %s en %.2fs -> %s / %s", file.filename, elapsed, md_path, pdf_path)
 
     return ProcessResponse(
         message=f"Archivo '{file.filename}' recibido; resumen en segundo plano.",
