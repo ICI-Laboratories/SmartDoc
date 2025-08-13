@@ -1,424 +1,381 @@
-# main.py
-import os
-import json
-import base64
-import time
-import getpass
-from types import SimpleNamespace
+# frontend/main.py
 
+import os
+import getpass
+import json
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import streamlit as st
 
-from docs import (
-    extract_text_with_easyocr,
-    save_to_folder,
-    extract_pages_from_text,
-    hierarchical_summary,
-    save_hierarchical_summary,
-    load_hierarchical_summary,
-    save_pdf_to_folder,
-    get_pages_text_by_numbers,
-)
-from llm import (
-    classify_text_with_lmstudio,
-    chat_with_context,
-    chat_with_multiple_docs,
-    get_relevant_pages_from_summary,
-)
+# ===============================
+# Configuración de la Aplicación
+# ===============================
+PROCESSOR_URL = os.getenv("SMARTDOC_PROCESSOR_URL", "http://127.0.0.1:8002")
+LLM_URL = os.getenv("SMARTDOC_LLM_URL", "http://127.0.0.1:8001")
 
-# --------------------------- Utilidades ---------------------------
+# Debe ser la MISMA ruta base que usa tu backend (document_processor)
+BASE_DIR = Path(os.getenv("SMARTDOC_BASE", Path.home() / "SmartDocData"))
+USERNAME = getpass.getuser()
+USER_FOLDER = BASE_DIR / USERNAME
 
-def show_pdf(file_path: str, height: int = 800):
-    """Muestra un PDF embebido en la página si existe."""
-    if not os.path.exists(file_path):
-        st.warning(f"No se encontró el archivo: {file_path}")
-        return
-    with open(file_path, "rb") as f:
-        pdf_data = f.read()
-    base64_pdf = base64.b64encode(pdf_data).decode("utf-8")
-    st.markdown(
-        f"""
-        <iframe src="data:application/pdf;base64,{base64_pdf}"
-                width="100%" height="{height}" type="application/pdf"></iframe>
-        """,
-        unsafe_allow_html=True,
-    )
-
-def safe_call(fn, *args, **kwargs):
-    """Envuelve llamadas al LLM para evitar que la app se caiga si el servidor no responde."""
-    try:
-        return fn(*args, **kwargs)
-    except Exception as e:
-        return {"error": str(e)}
-
-# ---------------------- Configuración de página -------------------
-
+# -------------------------------------------------
+# Página y estilos (evitar rerender con CSS inline)
+# -------------------------------------------------
 st.set_page_config(
-    page_title="SmartDoc - Asistente Inteligente para Documentos",
+    page_title="SmartDoc - Asistente Inteligente",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 st.markdown(
     """
     <style>
-    .main .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    .chat-message { padding: 1rem; border-radius: .5rem; margin-bottom: 1rem; display: flex; flex-direction: column; }
-    .chat-message-user { border-left: 5px solid #4361ee; }
-    .chat-message-assistant { border-left: 5px solid #3498db; }
-    .chat-message-heading { font-weight: bold; margin-bottom: .5rem; }
-    .stButton button { width: 100%; }
+        .stButton>button { width: 100%; }
+        .block-container { padding-top: 2rem; }
+        .chat-message {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-message-user { border-left: 5px solid #4A90E2; background-color: #F0F8FF; }
+        .chat-message-assistant { border-left: 5px solid #50E3C2; background-color: #F2FFFA; }
+        .chat-message-heading { font-weight: bold; margin-bottom: 0.5rem; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ------------------ Carpeta del usuario (sin login) ----------------
+# ===========================
+# Recursos (HTTP Session pool)
+# ===========================
+@st.cache_resource
+def get_http_session() -> requests.Session:
+    s = requests.Session()
+    retries = Retry(
+        total=2,
+        backoff_factor=0.5,
+        status_forcelist=(502, 503, 504),
+        allowed_methods=frozenset(["POST", "GET"]),
+    )
+    adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=retries)
+    s.mount("http://", adapter)
+    s.mount("https://", adapter)
+    s.headers.update(
+        {
+            "Connection": "keep-alive",
+            "Accept-Encoding": "gzip, deflate",
+        }
+    )
+    return s
 
-USERNAME = os.getenv("SMARTDOC_USER", getpass.getuser())
-BASE_DIR = os.getenv("SMARTDOC_BASE", os.path.join(os.path.expanduser("~"), "SmartDocData"))
-output_folder = os.path.join(BASE_DIR, USERNAME)
-os.makedirs(output_folder, exist_ok=True)
 
-# ------------------------- Session state --------------------------
+SESSION = get_http_session()
 
-st.session_state.setdefault("processed_files", [])
-st.session_state.setdefault("selected_bibliografia", [])
-st.session_state.setdefault("chat_history", [])
-st.session_state.setdefault("clear_question", False)
-st.session_state.setdefault("refresh_uploader", False)
+# ====================
+# Estado de la sesión
+# ====================
+if "processed_files" not in st.session_state:
+    st.session_state.processed_files = []
+if "selected_docs" not in st.session_state:
+    st.session_state.selected_docs = []
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# ---------------------------- Sidebar -----------------------------
+# =====================
+# Funciones cacheadas
+# =====================
+@st.cache_data(ttl=60, show_spinner=False)
+def get_available_summaries(user_folder: Path) -> dict:
+    """
+    Mapea 'Categoria/Subcategoria/NombreDoc' -> ruta absoluta del .summary.json (str).
+    Cacheada 60s para evitar escaneos de FS en cada rerender.
+    """
+    if not user_folder.exists():
+        return {}
+    summary_files_map: dict[str, str] = {}
+    for summary_path in user_folder.rglob("*.summary.json"):
+        try:
+            doc_name = summary_path.name.replace(".summary.json", "")
+            key = f"{summary_path.parent.parent.name}/{summary_path.parent.name}/{doc_name}"
+            summary_files_map[key] = str(summary_path)
+        except IndexError:
+            # Ignora archivos fuera de la estructura esperada
+            continue
+    return summary_files_map
 
+
+@st.cache_data(ttl=30, show_spinner=False)
+def list_categories(user_folder: Path) -> list[str]:
+    if not user_folder.exists():
+        return []
+    return sorted([d.name for d in user_folder.iterdir() if d.is_dir()])
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def list_subcategories(cat_path: Path) -> list[str]:
+    if not cat_path.exists():
+        return []
+    return sorted([d.name for d in cat_path.iterdir() if d.is_dir()])
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def list_md_files(subcat_path: Path) -> list[str]:
+    if not subcat_path.exists():
+        return []
+    return sorted([f.name for f in subcat_path.glob("*.md")])
+
+
+@st.cache_data(max_entries=256, show_spinner=False)
+def read_markdown_cached(path: str, mtime_ns: int) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
+
+@st.cache_data(max_entries=256, show_spinner=False)
+def read_json_cached(path: str, mtime_ns: int) -> dict:
+    p = Path(path)
+    # Intentamos orjson si está disponible (más rápido), si no, json estándar
+    try:
+        import orjson  # type: ignore
+        return orjson.loads(p.read_bytes())
+    except Exception:
+        return json.loads(p.read_text(encoding="utf-8"))
+
+
+# ============
+# Sidebar
+# ============
 with st.sidebar:
-    st.markdown(f"<h2 style='text-align:center;'>Bienvenido, {USERNAME}</h2>", unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Documentos", len(st.session_state.processed_files))
-    with col2:
-        st.metric("Consultas", len(st.session_state.chat_history))
-    st.caption(f"Carpeta de trabajo: `{output_folder}`")
+    st.markdown(f"## Bienvenido, {USERNAME}")
+    st.caption("Asistente Inteligente de Documentos")
     st.markdown("---")
-    st.caption("Desarrollado por ICI Laboratories, Universidad de Colima")
+    st.info(f"**Carpeta de Datos:** `{USER_FOLDER}`")
+    st.markdown("---")
+    st.caption("© 2025 SmartDoc")
 
-# ------------------------------ Tabs ------------------------------
+# ==============================
+# Pestañas principales (tabs)
+# ==============================
+tabs = st.tabs(["📤 Cargar Documentos", "📖 Explorar Documentos", "💬 Chatear con Documentos"])
 
-tabs = st.tabs(["📤 Cargar Documentos", "📖 Revisar Documentos", "💬 Consultar Documentos"])
-
-# ---------------------- Tab 1: Cargar Documentos ------------------
-
+# ==============================================================================
+# PESTAÑA 1: CARGAR DOCUMENTOS (subidas paralelas + keep-alive)
+# ==============================================================================
 with tabs[0]:
-    st.header("📤 Cargar y Procesar Documentos")
-    with st.expander("ℹ️ Instrucciones de uso", expanded=True):
-        st.markdown(
-            """
-            1. Selecciona uno o más PDFs.
-            2. Se extrae texto (OCR si hace falta), se clasifica y se genera un resumen jerárquico.
-            3. Todo queda guardado por categorías en tu carpeta de trabajo.
-            > Límite recomendado: 70 MB por archivo.
-            """
-        )
-
-    def refresh_uploader_callback():
-        st.session_state.refresh_uploader = True
-        st.rerun()
-
-    st.subheader("Selecciona los documentos a procesar")
-
-    uploader_key = f"pdf_uploader_{time.time()}" if st.session_state.refresh_uploader else "pdf_uploader"
-    if st.session_state.refresh_uploader:
-        st.session_state.refresh_uploader = False
-
-    uploaded_files = st.file_uploader(
-        "Arrastra o selecciona archivos PDF",
-        type=["pdf"],
-        accept_multiple_files=True,
-        key=uploader_key,
+    st.header("📤 Cargar y Procesar Nuevos Documentos")
+    st.markdown(
+        "Sube uno o más archivos PDF. El sistema los convertirá, clasificará con IA "
+        "y los organizará automáticamente en tu carpeta de datos."
     )
 
-    if uploaded_files:
-        st.subheader("Procesando documentos")
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+    with st.form("upload_form", clear_on_submit=False):
+        uploaded_files = st.file_uploader(
+            "Arrastra tus archivos PDF aquí o haz clic para seleccionar",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key="pdf_uploader",
+        )
+        submit_uploads = st.form_submit_button("Iniciar Procesamiento", disabled=not uploaded_files)
 
-        total_files = len(uploaded_files)
-        processed_count = 0
-        newly_processed = []
+    def _upload_one(file):
+        files_payload = {"file": (file.name, file.getvalue(), file.type)}
+        data_payload = {"username": USERNAME}
+        r = SESSION.post(
+            f"{PROCESSOR_URL}/process_document/",
+            files=files_payload,
+            data=data_payload,
+            timeout=30,
+        )
+        return file.name, r
 
-        for file in uploaded_files:
-            file_display_name = (file.name[:40] + "...") if len(file.name) > 40 else file.name
+    if submit_uploads and uploaded_files:
+        st.subheader("Progreso del Procesamiento")
+        progress = st.progress(0, text="Subiendo…")
+        total = len(uploaded_files)
 
-            if file.name in st.session_state.processed_files:
-                status_text.info(f"⏭️ Omitiendo {file_display_name} (ya procesado)")
-                processed_count += 1
-                progress_bar.progress(processed_count / total_files)
-                continue
+        # max 8 hilos o número de archivos (lo que sea menor)
+        max_workers = min(8, total)
+        successes = 0
 
-            try:
-                status_text.info(f"⚙️ Procesando {file_display_name}...")
-
-                # 1) Extracción
-                extracted_text = extract_text_with_easyocr(file)
-                if not extracted_text.strip():
-                    status_text.warning(f"⚠️ {file_display_name}: No se pudo extraer texto")
-                    processed_count += 1
-                    progress_bar.progress(processed_count / total_files)
-                    continue
-
-                # 2) Clasificación (carpetas destino)
-                main_cat, sub_cat = classify_text_with_lmstudio(extracted_text, output_folder)
-
-                # 3) Guardado .txt y .pdf
-                txt_path = save_to_folder(
-                    extracted_text,
-                    output_folder,
-                    file.name.replace(".pdf", ".txt"),
-                    main_cat,
-                    sub_cat,
-                )
-                save_pdf_to_folder(
-                    file,
-                    output_folder,
-                    file.name,
-                    main_cat,
-                    sub_cat,
-                )
-
-                # 4) Resumen jerárquico
-                pages = extract_pages_from_text(extracted_text)
-                summary_blocks = hierarchical_summary(pages)
-                summary_filename = file.name.replace(".pdf", "_hierarchical_summary.json")
-                summary_folder = os.path.join(output_folder, main_cat, sub_cat)
-                summary_path = os.path.join(summary_folder, summary_filename)
-                save_hierarchical_summary({"title": file.name, "blocks": summary_blocks}, summary_path)
-
-                # Estado
-                st.session_state.processed_files.append(file.name)
-                newly_processed.append(
-                    {"name": file.name, "category": f"{main_cat} / {sub_cat}", "txt_path": txt_path}
-                )
-
-            except Exception as e:
-                status_text.error(f"❌ Error al procesar {file_display_name}: {str(e)}")
-
-            processed_count += 1
-            progress_bar.progress(processed_count / total_files)
-
-        if newly_processed:
-            status_text.success(f"✅ Listo: {len(newly_processed)} documento(s) nuevos procesados")
-            st.subheader("Documentos procesados")
-            for doc in newly_processed:
-                with st.expander(f"📄 {doc['name']}"):
-                    st.write(f"**Categoría:** {doc['category']}")
-                    with open(doc["txt_path"], "r", encoding="utf-8") as fh:
-                        st.download_button(
-                            "⬇️ Descargar texto extraído",
-                            fh.read(),
-                            file_name=os.path.basename(doc["txt_path"]),
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(_upload_one, f): f for f in uploaded_files}
+            done = 0
+            for fut in as_completed(futures):
+                name, resp = fut.result()
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        st.success(
+                            f"✅ **{name}** aceptado. Categoría: **{data.get('category', 'N/A')}**. "
+                            f"El resumen se genera en segundo plano."
                         )
-            if st.button("🔄 Procesar más documentos"):
-                refresh_uploader_callback()
-        else:
-            status_text.info("ℹ️ No se procesaron nuevos documentos")
+                        st.session_state.processed_files.append(data.get("original_filename", name))
+                        successes += 1
+                    except Exception:
+                        st.success(f"✅ **{name}** aceptado.")
+                else:
+                    detail = "Error desconocido"
+                    try:
+                        detail = resp.json().get("detail", detail)
+                    except Exception:
+                        pass
+                    st.error(f"❌ {name}: {detail}")
+                done += 1
+                progress.progress(done / total, text=f"{done}/{total} completados")
 
-# --------------------- Tab 2: Revisar Documentos ------------------
+        st.toast(f"Procesados: {successes}/{total}")
 
+# ==============================================================================
+# PESTAÑA 2: EXPLORAR DOCUMENTOS (cache por mtime para lectura rápida)
+# ==============================================================================
 with tabs[1]:
-    st.header("📖 Explorar y Revisar Documentos")
-    with st.expander("ℹ️ Instrucciones de uso", expanded=True):
-        st.markdown(
-            """
-            1. Elige categoría y subcategoría.
-            2. Selecciona un PDF para visualizarlo en el visor embebido.
-            """
-        )
+    st.header("📖 Explorar y Visualizar Documentos")
+    st.markdown(
+        "Navega por las categorías generadas y visualiza el contenido de tus "
+        "documentos en formato Markdown."
+    )
 
-    if os.path.exists(output_folder):
-        categories = [d for d in os.listdir(output_folder) if os.path.isdir(os.path.join(output_folder, d))]
+    if not USER_FOLDER.exists():
+        st.info("Aún no se han procesado documentos. Sube algunos en la pestaña 'Cargar Documentos'.")
+    else:
+        categories = list_categories(USER_FOLDER)
+        col1, col2 = st.columns(2)
+        selected_category = col1.selectbox("Elige una Categoría:", [""] + categories, key="cat_select")
 
-        if not categories:
-            st.info("📂 No hay documentos disponibles. Carga algunos en la pestaña 'Cargar Documentos'.")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                category = st.selectbox("Categoría", [""] + categories, key="review_category")
-            if category:
-                with col2:
-                    subcats = [
-                        d
-                        for d in os.listdir(os.path.join(output_folder, category))
-                        if os.path.isdir(os.path.join(output_folder, category, d))
-                    ]
-                    subcat = st.selectbox("Subcategoría", [""] + subcats, key="review_subcat")
+        if selected_category:
+            cat_path = USER_FOLDER / selected_category
+            subcategories = list_subcategories(cat_path)
+            selected_subcat = col2.selectbox("Elige una Subcategoría:", [""] + subcategories, key="subcat_select")
 
-                if subcat:
-                    folder = os.path.join(output_folder, category, subcat)
-                    pdf_files = [f for f in os.listdir(folder) if f.lower().endswith(".pdf")]
+            if selected_subcat:
+                subcat_path = cat_path / selected_subcat
+                md_files = list_md_files(subcat_path)
 
-                    if not pdf_files:
-                        st.info(f"📂 No hay PDFs en {category}/{subcat}")
-                    else:
-                        pdf_selected = st.selectbox("Documento", [""] + pdf_files, key="review_pdf")
-                        if pdf_selected:
-                            st.subheader(f"Visualizando: {pdf_selected}")
-                            show_pdf(os.path.join(folder, pdf_selected))
+                if not md_files:
+                    st.info(f"No hay documentos Markdown en '{selected_category}/{selected_subcat}'.")
+                else:
+                    selected_md = st.selectbox("Selecciona un Documento para Ver:", [""] + md_files, key="md_select")
+                    if selected_md:
+                        md_path = subcat_path / selected_md
+                        try:
+                            mtime_ns = md_path.stat().st_mtime_ns
+                            markdown_content = read_markdown_cached(str(md_path), mtime_ns)
+                            with st.expander("Ver Contenido del Documento", expanded=True):
+                                # Renderizado de Markdown (rápido, cacheado)
+                                st.markdown(markdown_content, unsafe_allow_html=True)
+                        except Exception as e:
+                            st.error(f"No se pudo leer el archivo: {e}")
 
-# -------------------- Tab 3: Consultar Documentos -----------------
-
+# ==============================================================================
+# PESTAÑA 3: CHATEAR CON DOCUMENTOS (cache de índices y lecturas JSON)
+# ==============================================================================
 with tabs[2]:
-    st.header("💬 Consultar Documentos")
-    with st.expander("ℹ️ Instrucciones de uso", expanded=True):
-        st.markdown(
-            """
-            1. Agrega uno o más documentos (usa sus resúmenes generados).
-            2. Escribe tu pregunta y envíala.
-            3. La respuesta se basa en las páginas relevantes encontradas.
-            """
-        )
+    st.header("💬 Chatear con tus Documentos")
+    st.markdown(
+        "Selecciona los documentos con los que quieres conversar, haz una pregunta, y la IA "
+        "buscará la información relevante en ellos."
+    )
 
     col1, col2 = st.columns([1, 2])
 
-    # ----- Selector de documentos -----
+    # --- Panel de Selección de Documentos ---
     with col1:
-        st.subheader("Documentos seleccionados")
+        st.subheader("Fuente de Datos")
 
-        with st.expander("➕ Agregar documentos", expanded=len(st.session_state.selected_bibliografia) == 0):
-            categories = [d for d in os.listdir(output_folder) if os.path.isdir(os.path.join(output_folder, d))]
-            if not categories:
-                st.info("📂 No hay documentos disponibles. Carga algunos primero.")
-            else:
-                selected_category = st.selectbox("Categoría", [""] + categories, key="chat_category")
-                if selected_category:
-                    subcategories = [
-                        d
-                        for d in os.listdir(os.path.join(output_folder, selected_category))
-                        if os.path.isdir(os.path.join(output_folder, selected_category, d))
-                    ]
-                    selected_subcategory = st.selectbox("Subcategoría", [""] + subcategories, key="chat_subcategory")
+        summary_files_map = get_available_summaries(USER_FOLDER)
 
-                    if selected_subcategory:
-                        folder_path = os.path.join(output_folder, selected_category, selected_subcategory)
-                        biblio_files = [f for f in os.listdir(folder_path) if f.endswith("_hierarchical_summary.json")]
-
-                        if biblio_files:
-                            selected_biblio = st.selectbox(
-                                "Documento",
-                                [""] + [f.replace("_hierarchical_summary.json", ".pdf") for f in biblio_files],
-                                key="chat_biblio",
-                            )
-                            if selected_biblio and st.button("➕ Agregar documento"):
-                                summary_file = selected_biblio.replace(".pdf", "_hierarchical_summary.json")
-                                full_path = os.path.join(folder_path, summary_file)
-                                if full_path not in st.session_state.selected_bibliografia:
-                                    st.session_state.selected_bibliografia.append(full_path)
-                                    st.success(f"✅ Agregado: {selected_biblio}")
-                                    st.rerun()
-                                else:
-                                    st.info("ℹ️ Ya está en la lista")
-                        else:
-                            st.info("📂 No hay documentos en esta subcategoría")
-
-        if st.session_state.selected_bibliografia:
-            for idx, bib_path in enumerate(st.session_state.selected_bibliografia):
-                doc_name = os.path.basename(bib_path).replace("_hierarchical_summary.json", ".pdf")
-                st.markdown(
-                    f"""
-                    <div style="padding:10px;border-radius:5px;margin-bottom:10px;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <div style="flex-grow:1;">📄 {doc_name}</div>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if st.button("❌ Quitar", key=f"remove_{idx}"):
-                    st.session_state.selected_bibliografia.pop(idx)
-                    st.rerun()
+        if not summary_files_map:
+            st.warning("No se encontraron documentos procesados con resúmenes.")
+            st.button("Limpiar Caché y Refrescar", on_click=lambda: (get_available_summaries.clear(), st.rerun()))
         else:
-            st.info("⚠️ No has seleccionado ningún documento")
+            options = sorted(summary_files_map.keys())
+            st.session_state.selected_docs = st.multiselect(
+                "Selecciona los documentos para el chat:",
+                options,
+                default=st.session_state.get("selected_docs", []),
+                help="Puedes seleccionar múltiples documentos de diferentes categorías.",
+            )
 
-    # ----- Panel de chat -----
+            st.info(f"**Seleccionados:** {len(st.session_state.selected_docs)} documento(s).")
+            if st.button("Limpiar Caché y Refrescar"):
+                # Forzar recarga de índices cacheados
+                get_available_summaries.clear()
+                list_categories.clear()
+                list_subcategories.clear()
+                list_md_files.clear()
+                read_markdown_cached.clear()
+                read_json_cached.clear()
+                st.rerun()
+
+    # --- Panel de Chat ---
     with col2:
         st.subheader("Conversación")
+        with st.form("chat_form", clear_on_submit=False):
+            question = st.text_area(
+                "Escribe tu pregunta aquí:",
+                key="user_question",
+                placeholder="Ej: ¿Cuáles son las conclusiones principales sobre el análisis de datos?",
+                height=100,
+            )
+            submit_q = st.form_submit_button(
+                "Enviar Pregunta",
+                disabled=not st.session_state.selected_docs or not question,
+            )
 
-        placeholder = "" if st.session_state.clear_question else st.session_state.get("user_question", "")
-        if st.session_state.clear_question:
-            st.session_state.clear_question = False
+        if submit_q:
+            with st.spinner("Pensando... La IA está buscando en los documentos seleccionados..."):
+                try:
+                    # 1) Cargar resúmenes (cache por mtime)
+                    summaries = []
+                    doc_paths = []
+                    for doc_key in st.session_state.selected_docs:
+                        summary_path_str = summary_files_map[doc_key]
+                        summary_path = Path(summary_path_str)
+                        md_path = summary_path.with_suffix("").with_suffix(".md")  # .summary.json -> .md
 
-        question = st.text_input(
-            "Escribe tu pregunta:",
-            key="user_question",
-            value=placeholder,
-            placeholder="¿Qué deseas saber sobre los documentos seleccionados?",
-        )
+                        mtime_json = summary_path.stat().st_mtime_ns
+                        summary_obj = read_json_cached(str(summary_path), mtime_json)
+                        summaries.append(summary_obj)
+                        doc_paths.append(str(md_path))
 
-        if st.button("📤 Enviar pregunta"):
-            if not st.session_state.selected_bibliografia:
-                st.warning("⚠️ Debes seleccionar al menos un documento")
-            elif not question.strip():
-                st.warning("⚠️ Por favor, escribe una pregunta")
-            else:
-                with st.spinner("⏳ Procesando tu pregunta..."):
-                    # Preparar documentos
-                    doc_summaries, doc_txt_paths = [], []
-                    for bib_path in st.session_state.selected_bibliografia:
-                        bib_data = load_hierarchical_summary(bib_path)
-                        doc_summaries.append(bib_data)
-                        doc_txt_paths.append(bib_path.replace("_hierarchical_summary.json", ".txt"))
-
-                    # Generar respuesta
-                    if len(doc_summaries) == 1:
-                        bib_data = doc_summaries[0]
-                        pages_info = safe_call(get_relevant_pages_from_summary, bib_data, question)
-                        txt_path = doc_txt_paths[0]
-
-                        if os.path.exists(txt_path):
-                            with open(txt_path, "r", encoding="utf-8") as f:
-                                full_text = f.read()
-                            pages = pages_info.get("pages", []) if isinstance(pages_info, dict) else []
-                            context = get_pages_text_by_numbers(full_text, pages)
-                            answer = chat_with_context(context, question)
-                            source = f"*Fuente: {os.path.basename(txt_path)}"
-                            if pages:
-                                source += f" (páginas: {', '.join(map(str, pages))})"
-                            combined_response = f"{answer}\n\n{source}"
-                        else:
-                            combined_response = f"⚠️ No se encontró el archivo de texto para {bib_data.get('title','(sin título)')}"
-                    else:
-                        # Múltiples documentos (usa utilidad del módulo llm)
-                        combined_response = chat_with_multiple_docs(doc_summaries, doc_txt_paths, question)
-
-                    st.session_state.chat_history.append({"question": question, "answer": combined_response})
-                    st.session_state.clear_question = True
-                    st.rerun()
+                    # 2) Petición al LLM
+                    payload = {
+                        "summaries": summaries,
+                        "doc_paths": doc_paths,
+                        "question": question,
+                    }
+                    resp = SESSION.post(f"{LLM_URL}/chat_with_multiple_docs", json=payload, timeout=90)
+                    resp.raise_for_status()
+                    answer = resp.json().get("answer", "No se recibió una respuesta válida.")
+                    st.session_state.chat_history.insert(0, {"question": question, "answer": answer})
+                except requests.RequestException as e:
+                    st.error(f"Error de comunicación con el servicio de IA: {e}")
+                except Exception as e:
+                    st.error(f"Ocurrió un error inesperado: {e}")
 
         st.markdown("---")
 
-        # Historial
+        # Mostrar historial de chat (más reciente primero)
         if not st.session_state.chat_history:
-            st.info("💬 Aún no hay mensajes. Selecciona documentos y realiza tu primera pregunta.")
+            st.info("El historial de la conversación aparecerá aquí.")
         else:
-            for entry in reversed(st.session_state.chat_history):
-                st.markdown(
-                    f"""
-                    <div class="chat-message chat-message-user">
-                        <div class="chat-message-heading">🙋 Tú preguntaste:</div>
-                        {entry['question']}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    f"""
-                    <div class="chat-message chat-message-assistant">
-                        <div class="chat-message-heading">🤖 Respuesta:</div>
-                        {entry['answer']}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-# --------------------------- Pie de página ------------------------
-
-st.markdown("---")
-st.caption("SmartReview © 2025 ICI Laboratories, Universidad de Colima - Todos los derechos reservados")
+            for entry in st.session_state.chat_history:
+                with st.container():
+                    st.markdown(
+                        f'<div class="chat-message chat-message-user">'
+                        f'<div class="chat-message-heading">🙋 Tu Pregunta:</div>{entry["question"]}'
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f'<div class="chat-message chat-message-assistant">'
+                        f'<div class="chat-message-heading">🤖 Respuesta:</div>{entry["answer"]}'
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown("---")

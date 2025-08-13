@@ -1,82 +1,330 @@
 # document_processor/api.py
-import os
-import requests
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from typing import List
 
-import logic # La lógica de docs.py
+from __future__ import annotations
 
-app = FastAPI(
-    title="Document Processor Service",
-    description="Un microservicio para procesar y almacenar documentos."
+import asyncio
+import logging
+import time
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import httpx
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
 )
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, BaseSettings, Field, ValidationError
 
-# Configuración de URLs de servicios y carpetas base
-LLM_SERVICE_URL = os.getenv("LLM_SERVICE_URL", "http://127.0.0.1:8001")
-BASE_DIR = os.getenv("SMARTDOC_BASE", os.path.join(os.path.expanduser("~"), "SmartDocData"))
+import logic  # tu módulo mejorado
 
-@app.post("/process_document/", summary="Procesa un documento PDF")
-async def process_document(
-    username: str = Form(...),
-    file: UploadFile = File(...)
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
+
+
+# -----------------------------
+# Configuración (env-first)
+# -----------------------------
+
+class Settings(BaseSettings):
+    llm_service_url: str = Field(default="http://127.0.0.1:8001")
+    base_dir: Path = Field(default=Path.home() / "SmartDocData")
+    enable_cors: bool = True
+    cors_origins: List[str] = Field(default_factory=lambda: ["*"])
+    # Seguridad sencilla opcional
+    require_api_key: bool = False
+    api_key_header_name: str = "x-api-key"
+    api_key_value: Optional[str] = None
+
+    # Límites
+    max_pdf_bytes: int = 30 * 1024 * 1024  # 30 MB
+    classify_snippet_len: int = 4000
+    http_timeout_seconds: float = 20.0
+
+    class Config:
+        env_prefix = "SMARTDOC_"
+        case_sensitive = False
+
+
+def get_settings() -> Settings:
+    s = Settings()
+    # Asegura base_dir creada
+    s.base_dir.mkdir(parents=True, exist_ok=True)
+    return s
+
+
+# --------------------------------
+# Seguridad simple por API Key
+# --------------------------------
+
+async def require_api_key(
+    settings: Settings = Depends(get_settings),
+    provided: Optional[str] = Header(default=None, alias=lambda s=Settings().api_key_header_name: s),
 ):
     """
-    Endpoint principal que orquesta el procesamiento de un archivo:
-    1. Extrae texto (con OCR si es necesario).
-    2. Llama al LLM Service para clasificar.
-    3. Guarda el .txt y el .pdf original.
-    4. Genera y guarda el resumen jerárquico.
+    Verifica API key si está habilitada.
     """
-    output_folder = os.path.join(BASE_DIR, username)
-    os.makedirs(output_folder, exist_ok=True)
+    if not settings.require_api_key:
+        return
+    header_name = settings.api_key_header_name
+    if not provided or settings.api_key_value is None or provided != settings.api_key_value:
+        raise HTTPException(status_code=401, detail=f"API key inválida o ausente en header '{header_name}'.")
+
+
+# -----------------------------
+# App y middlewares
+# -----------------------------
+
+app = FastAPI(
+    title="SmartDoc Document Processor",
+    version="1.1",
+    description="Microservicio para recibir, convertir, clasificar y almacenar documentos.",
+)
+
+# CORS opcional
+@app.on_event("startup")
+async def setup_cors():
+    settings = get_settings()
+    if settings.enable_cors:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+
+# --------------------------------
+# Modelos de respuesta / request
+# --------------------------------
+
+class ProcessResponse(BaseModel):
+    message: str
+    original_filename: str
+    markdown_path: str
+    pdf_path: str
+    category: str
+    summary_path: str
+
+
+# --------------------------------
+# HTTP utils
+# --------------------------------
+
+def _httpx_client(settings: Settings) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=settings.llm_service_url,
+        timeout=httpx.Timeout(settings.http_timeout_seconds),
+        follow_redirects=True,
+    )
+
+
+# --------------------------------
+# Background: crear y guardar resumen
+# --------------------------------
+
+async def _retry(coro_func, *args, retries: int = 2, delay: float = 1.0, **kwargs):
+    last_exc = None
+    for i in range(retries + 1):
+        try:
+            return await coro_func(*args, **kwargs)
+        except Exception as e:
+            last_exc = e
+            if i < retries:
+                await asyncio.sleep(delay)
+    raise last_exc
+
+
+async def create_and_save_summary_async(
+    markdown_text: str,
+    settings: Settings,
+    output_path: Path,
+    original_filename: str,
+):
+    """
+    1) (Opcional) llama al LLM para generar un resumen.
+    2) Guarda el JSON resultante de forma atómica.
+    """
+    # Placeholder de ejemplo: aquí podrías:
+    #  - dividir el markdown por secciones
+    #  - llamar a /summarize_chunk por sección
+    #  - combinar resultados
+    # Se implementa una llamada de ejemplo con reintento:
+    summary_data = {
+        "title": original_filename,
+        "source": "Generated by background task",
+        "blocks": [],
+    }
+
+    async def call_summary(text_chunk: str):
+        payload = {"text": text_chunk}
+        async with _httpx_client(settings) as client:
+            r = await client.post("/summarize", json=payload)
+            r.raise_for_status()
+            return r.json()
 
     try:
-        # 1. Extracción de Texto
-        contents = await file.read()
-        extracted_text = logic.extract_text_with_easyocr(contents)
-        if not extracted_text.strip():
-            raise HTTPException(status_code=400, detail="No se pudo extraer texto del documento.")
+        # Aquí enviamos todo el markdown como un solo chunk (simple).
+        # Cambia a chunking si es necesario.
+        try:
+            result = await _retry(call_summary, markdown_text, retries=1, delay=1.5)
+            # Esperamos {"summary": "..."} como contrato mínimo
+            block = result if isinstance(result, dict) else {"summary": str(result)}
+            summary_data["blocks"].append(block)
+        except Exception as e:
+            logger.warning("Fallo al llamar /summarize, se usará contenido placeholder: %s", e)
+            summary_data["blocks"].append(
+                {"summary": "Este es un resumen de ejemplo generado en segundo plano."}
+            )
 
-        # 2. Clasificación (llamando al llm_service)
-        existing_categories = logic.get_existing_categories(output_folder)
-        response = requests.post(
-            f"{LLM_SERVICE_URL}/classify",
-            json={"text": extracted_text, "categories": existing_categories}
-        )
-        response.raise_for_status() # Lanza un error si la petición falla
-        classification = response.json()
-        main_cat = classification.get("main_category", "Sin_Clasificar")
-        sub_cat = classification.get("sub_category", "Sin_Subcategoria")
-
-        # 3. Guardado de .txt y .pdf
-        txt_path = logic.save_to_folder(
-            extracted_text, output_folder, file.filename.replace(".pdf", ".txt"), main_cat, sub_cat
-        )
-        # Para guardar el PDF, necesitamos "rebobinar" el archivo en memoria
-        await file.seek(0)
-        logic.save_pdf_to_folder(
-            file.file, output_folder, file.filename, main_cat, sub_cat
-        )
-
-        # 4. Resumen Jerárquico (llamando al llm_service)
-        pages = logic.extract_pages_from_text(extracted_text)
-        
-        # Aquí la lógica de hierarchical_summary necesita ser adaptada para llamar a la API
-        # en lugar de a la función directamente.
-        # Por simplicidad, este ejemplo muestra el concepto. 
-        # Deberías refactorizar hierarchical_summary en logic.py para que acepte la URL del servicio LLM.
-        
-        # summary_blocks = logic.hierarchical_summary(pages, llm_service_url=LLM_SERVICE_URL)
-        # ... (guardar resumen) ...
-
-        return {
-            "message": f"Documento '{file.filename}' procesado y guardado.",
-            "filename": file.filename,
-            "category": f"{main_cat}/{sub_cat}",
-            "text_path": txt_path
-        }
-
-    except requests.RequestException as e:
-        raise HTTPException(status_code=503, detail=f"Error al comunicar con LLM Service: {e}")
+        logic.save_hierarchical_summary(summary_data, output_path)
+        logger.info("Resumen guardado en %s", output_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno al procesar el archivo: {e}")
+        logger.exception("Error al guardar el resumen en segundo plano para %s: %s", output_path, e)
+
+
+def create_and_save_summary(
+    markdown_text: str,
+    settings: Settings,
+    output_path: Path,
+    original_filename: str,
+):
+    """
+    Wrapper sync para BackgroundTasks (lanza una tarea asyncio).
+    """
+    asyncio.run(
+        create_and_save_summary_async(
+            markdown_text=markdown_text,
+            settings=settings,
+            output_path=output_path,
+            original_filename=original_filename,
+        )
+    )
+
+
+# --------------------------------
+# Endpoints
+# --------------------------------
+
+@app.post(
+    "/process_document/",
+    response_model=ProcessResponse,
+    summary="Procesa un único documento PDF",
+    dependencies=[Depends(require_api_key)],
+)
+async def process_document(
+    background_tasks: BackgroundTasks,
+    username: str = Form(..., min_length=1, max_length=120),
+    file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
+):
+    """
+    Pipeline:
+      1) PDF -> Markdown
+      2) Clasificación vía LLM
+      3) Guardado atómico (MD/PDF)
+      4) Tarea en segundo plano para resumen
+    """
+    t0 = time.perf_counter()
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="El archivo no tiene nombre.")
+
+    # Limitar tamaño del PDF en memoria
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="El archivo subido está vacío.")
+    if len(pdf_bytes) > settings.max_pdf_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"El archivo excede el límite ({settings.max_pdf_bytes} bytes).",
+        )
+
+    user_folder = settings.base_dir / logic.slugify(username)
+
+    # 1) Conversión
+    try:
+        markdown_content = logic.convert_pdf_to_markdown(pdf_bytes)
+        if not markdown_content:
+            raise HTTPException(status_code=400, detail="La conversión a Markdown no produjo contenido.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error crítico en la conversión a Markdown: {e}")
+
+    # 2) Clasificación (asíncrona, httpx)
+    snippet = markdown_content[: settings.classify_snippet_len]
+    try:
+        existing_categories = logic.get_existing_categories(user_folder)
+        payload = {"text": snippet, "categories": existing_categories}
+        async with _httpx_client(settings) as client:
+            r = await client.post("/classify", json=payload)
+            r.raise_for_status()
+            classification = r.json() or {}
+        main_cat = classification.get("main_category") or "Sin-Clasificar"
+        sub_cat = classification.get("sub_category") or "General"
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"No se pudo conectar con el LLM Service: {e}")
+
+    # 3) Guardado atómico
+    filename_base = Path(file.filename).stem
+    try:
+        md_path = logic.save_markdown_to_folder(
+            markdown_content,
+            user_folder,
+            filename_base,
+            main_cat,
+            sub_cat,
+        )
+        pdf_path = logic.save_pdf_to_folder(
+            pdf_bytes,
+            user_folder,
+            file.filename,
+            main_cat,
+            sub_cat,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al guardar archivos en el disco: {e}")
+
+    # 4) Resumen (background)
+    summary_filename = md_path.with_suffix(".summary.json").name
+    summary_path = md_path.parent / summary_filename
+
+    background_tasks.add_task(
+        create_and_save_summary,
+        markdown_text=markdown_content,
+        settings=settings,
+        output_path=summary_path,
+        original_filename=file.filename,
+    )
+
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "Procesado %s en %.2fs -> %s / %s",
+        file.filename,
+        elapsed,
+        md_path,
+        pdf_path,
+    )
+
+    return ProcessResponse(
+        message=f"Archivo '{file.filename}' recibido; resumen en segundo plano.",
+        original_filename=file.filename,
+        markdown_path=str(md_path),
+        pdf_path=str(pdf_path),
+        category=f"{main_cat}/{sub_cat}",
+        summary_path=str(summary_path),
+    )
+
+
+@app.get("/", summary="Endpoint de estado")
+async def read_root():
+    return {"status": "Document Processor Service is running"}
