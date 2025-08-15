@@ -127,6 +127,10 @@ Abre **4 terminales** y ejecuta un servicio en cada una.
     *(El gateway estará escuchando en `http://127.0.0.1:8000`)*
 
   * **Terminal 2: LLM Service (Python)**
+    Activar el entorno:
+   ```bash
+   .\env\Scripts\activate
+   ```
 
     ```bash
     uvicorn llm_service.api:app --host 127.0.0.1 --port 8001
