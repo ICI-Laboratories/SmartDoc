@@ -4,7 +4,7 @@ import streamlit as st
 
 # --- st.set_page_config() debe ser el primer comando de Streamlit ---
 st.set_page_config(
-    page_title="SmartDoc",
+    page_title="SmartReview",
     layout="wide",
 )
 
@@ -31,33 +31,33 @@ if st.session_state.processing_notifications:
 # --- Sidebar (común) ---
 def sidebar_info():
     with st.sidebar:
-        st.markdown("### SmartDoc")
+        st.markdown("### SmartReview")
         st.caption("Asistente de documentos")
         st.divider()
         st.markdown(f"**Usuario:** `{USERNAME}`")
         st.markdown(f"**Carpeta de datos:** `{USER_FOLDER}`")
         st.divider()
-        st.caption("© 2025 SmartDoc")
+        st.caption("© 2025 SmartReview")
 
 
 def main():
     sidebar_info()
 
-    st.title("SmartDoc: Asistente Inteligente")
+    st.title("SmartReview: Asistente Inteligente")
     st.markdown(
         "Bienvenido. Usa la navegación de la izquierda para cargar documentos, "
         "explorarlos o iniciar una conversación con ellos."
     )
 
     # --- Sección explicativa para presentación (sin emojis) ---
-    st.subheader("¿Qué es SmartDoc?")
+    st.subheader("¿Qué es SmartReview?")
     st.write(
         """
-        SmartDoc es un asistente para la revisión y consulta de literatura científica,
+        SmartReview es un asistente para la revisión y consulta de literatura científica,
         diseñado para funcionar totalmente de forma local, garantizando la
         confidencialidad de los documentos.
 
-        A diferencia de herramientas basadas en la nube, SmartDoc emplea un enfoque
+        A diferencia de herramientas basadas en la nube, SmartReview emplea un enfoque
         de Generación Aumentada por Recuperación (RAG) modificado que procesa PDFs
         página por página y genera resúmenes estructurados y concisos (menos de 30 palabras),
         preservando el núcleo semántico y reduciendo significativamente la carga computacional.
