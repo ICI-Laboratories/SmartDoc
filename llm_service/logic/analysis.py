@@ -45,7 +45,6 @@ def _load_npz(vector_path: Path):
     """Carga segura de npz con mmap para menor uso de memoria."""
     try:
         data = np.load(vector_path, allow_pickle=True, mmap_mode="r")
-        # Validaciones mínimas
         if "chunks" not in data or "embeddings" not in data:
             raise ValueError("El archivo NPZ no contiene 'chunks' ni 'embeddings'")
         chunks = np.array(data["chunks"], dtype=object)
@@ -65,7 +64,6 @@ def _l2_normalize(mat: np.ndarray, axis: int = -1, eps: float = 1e-12) -> np.nda
     norms = np.maximum(norms, eps)
     return (mat / norms).astype(np.float32)
 
-# Intento de carga del modelo una vez
 try:
     EMBEDDING_MODEL = SentenceTransformer(_EMBEDDING_MODEL_NAME)
     logger.info(f"Modelo de SentenceTransformer '{_EMBEDDING_MODEL_NAME}' cargado en llm_service.")
@@ -89,30 +87,23 @@ def hybrid_search_in_docs(
     En caso de error global, conserva el patrón de:
     [{"error": "..."}]
     """
-    # Validaciones iniciales (mismo comportamiento)
     if not EMBEDDING_MODEL:
         return [{"error": "El modelo de embeddings no está disponible."}]
     if not query or not query.strip():
         return [{"error": "La consulta de búsqueda no puede estar vacía."}]
 
-    # Normaliza alpha a [0,1] por seguridad
     alpha = float(min(max(alpha, 0.0), 1.0))
 
-    # Pre-cálculos de la query
-    query_vec = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)  # vector unitario
+    query_vec = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)
     query_vec = query_vec.astype(np.float32)
     q_tokens = _tokenize(query)
 
-    # Prepara patrón regex (compilado una sola vez) para keyword_count
-    # Solo usamos tokens únicos y con longitud >= 2 para evitar ruido.
     unique_tokens = [t for t in dict.fromkeys(q_tokens) if len(t) >= 2]
     if unique_tokens:
         keyword_pattern = re.compile(r"\b(" + r"|".join(map(re.escape, unique_tokens)) + r")\b", flags=re.IGNORECASE | re.UNICODE)
     else:
-        keyword_pattern = None  # consulta sin tokens "útiles"
+        keyword_pattern = None
 
-    # Acumularemos solo los mejores top_k usando un heap (eficiente)
-    # Guardamos tuplas (score, doc_name, text, keyword_count)
     heap: List[Tuple[float, str, str, int]] = []
 
     for md_path_str in doc_paths:
@@ -125,40 +116,32 @@ def hybrid_search_in_docs(
             continue
 
         try:
-            chunks, embeddings = _load_npz(vector_path)  # embeddings: (N, D)
+            chunks, embeddings = _load_npz(vector_path)
             if embeddings.dtype != np.float32:
                 embeddings = embeddings.astype(np.float32, copy=False)
 
-            # BM25 sobre corpus tokenizado
             tokenized_corpus = [_tokenize(ch) for ch in chunks.tolist()]
             bm25 = BM25Okapi(tokenized_corpus)
 
-            # Puntajes BM25 (si no hay tokens de consulta, serán todos 0)
             if q_tokens:
                 keyword_scores = np.asarray(bm25.get_scores(q_tokens), dtype=np.float32)
             else:
                 keyword_scores = np.zeros((len(chunks),), dtype=np.float32)
 
-            # Puntajes semánticos (coseno) con embeddings ya normalizados
-            # query_vec shape (1, D) · embeddings_norm(T, D) → (T,)
             embeddings_norm = _l2_normalize(embeddings, axis=1)
             semantic_scores = (embeddings_norm @ query_vec[0]).astype(np.float32)
 
-            # Normalizaciones a [0,1]
             norm_keyword = _safe_normalize(keyword_scores)
             norm_semantic = _safe_semantic_scale(semantic_scores)
 
-            # Score combinado y filtrado por umbral
             combined = (alpha * norm_semantic) + ((1.0 - alpha) * norm_keyword)
 
-            # Recorremos y usamos heap para mantener solo top_k globales
             for i, score in enumerate(combined):
                 if score < _MIN_COMBINED_SCORE:
                     continue
                 text = chunks[i].item() if isinstance(chunks[i], np.generic) else chunks[i]
                 if not isinstance(text, str):
                     continue
-                # Conteo de menciones de palabra clave
                 if keyword_pattern is not None:
                     kw_count = len(keyword_pattern.findall(text))
                 else:
@@ -168,7 +151,6 @@ def hybrid_search_in_docs(
                 if len(heap) < top_k:
                     heapq.heappush(heap, item)
                 else:
-                    # si el nuevo score es mayor que el menor actual, reemplaza
                     if item[0] > heap[0][0]:
                         heapq.heapreplace(heap, item)
 
@@ -177,9 +159,8 @@ def hybrid_search_in_docs(
             continue
 
     if not heap:
-        return []  # comportamiento esperado: sin resultados
+        return []
 
-    # heap -> lista ordenada desc
     top_items = heapq.nlargest(top_k, heap, key=lambda x: x[0])
     return [
         {"score": score, "document": doc, "text": text, "keyword_count": kw}
@@ -187,7 +168,6 @@ def hybrid_search_in_docs(
     ]
 
 
-# --- Lógica de Similitud de Documentos ---
 def calculate_document_similarity(doc_paths: List[str]) -> Dict:
     """
     Calcula la matriz de similitud del coseno entre una lista de documentos.
@@ -219,7 +199,6 @@ def calculate_document_similarity(doc_paths: List[str]) -> Dict:
 
         try:
             _, embeddings = _load_npz(vector_path)
-            # Vector promedio del documento con manejo de NaNs
             avg_vec = np.mean(embeddings, axis=0)
             if not np.all(np.isfinite(avg_vec)):
                 raise ValueError("Vector promedio contiene valores no finitos")
@@ -233,7 +212,6 @@ def calculate_document_similarity(doc_paths: List[str]) -> Dict:
     if not doc_vectors:
         return {"error": "No se pudo calcular ningún vector de documento.", "details": errors}
 
-    # Matriz de similitud rápida: normaliza y usa producto punto
     M = np.vstack(doc_vectors).astype(np.float32)
     M = _l2_normalize(M, axis=1)
     similarity_matrix = (M @ M.T).astype(np.float32)

@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sentence_transformers import SentenceTransformer
 
-# 👇 Imports absolutos desde el paquete document_processor
 from document_processor.core_pdf import convert_pdf_to_markdown, extract_pages_from_text
 from document_processor.core_io import (
     slugify,
@@ -32,12 +31,9 @@ if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
 
-# --- INICIO DE LA MODIFICACIÓN: Cargar modelo de embeddings ---
 try:
-    # Carga el modelo de embeddings una sola vez cuando la aplicación arranca.
-    # 'all-MiniLM-L6-v2' es un modelo excelente, rápido y multilingüe.
     EMBEDDING_MODEL = SentenceTransformer('BAAI/bge-large-en-v1.5')
-    logger.info("Modelo de SentenceTransformer 'all-MiniLM-L6-v2' cargado correctamente.")
+    logger.info("Modelo de SentenceTransformer 'BAAI/bge-large-en-v1.5' cargado correctamente.")
 except Exception as e:
     logger.error(f"FATAL: No se pudo cargar el modelo de SentenceTransformer: {e}")
     EMBEDDING_MODEL = None
@@ -75,7 +71,7 @@ async def require_api_key(request: Request, settings: Settings = Depends(get_set
 
 
 # ---------------- App ----------------
-app = FastAPI(title="SmartDoc Document Processor", version="1.5") # Versión incrementada
+app = FastAPI(title="SmartDoc Document Processor", version="1.5")
 _settings = get_settings()
 
 if _settings.enable_cors:
@@ -196,7 +192,6 @@ async def process_document(
         original_filename=file.filename,
     )
     
-    # --- INICIO DE LA MODIFICACIÓN: Creación de Vectores ---
     if EMBEDDING_MODEL:
         try:
             # Dividir el markdown en chunks (párrafos) para una búsqueda más granular.

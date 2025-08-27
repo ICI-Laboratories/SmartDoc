@@ -10,7 +10,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import re
 
-# Reutilizamos las funciones comunes
 from lib.common import (
     get_http_session,
     LLM_URL,
@@ -20,7 +19,7 @@ from lib.common import (
 
 st.set_page_config(page_title="Análisis de Documentos", layout="wide")
 
-st.title("🔬 Análisis Cuantitativo de Documentos")
+st.title(" Análisis Cuantitativo de Documentos")
 
 # ---------------------------------------------------------------------
 # Helpers
@@ -105,7 +104,6 @@ with st.sidebar:
 
     st.info(f"**Documentos seleccionados:** {len(selected_docs)}")
 
-# --- Pestañas para cada tipo de análisis ---
 tab_search, tab_similarity = st.tabs(["Búsqueda Semántica", "Análisis de Similitud"])
 
 # =====================================================================
@@ -156,7 +154,6 @@ with tab_search:
                     except Exception as e:
                         st.error(f"Error inesperado: {e}")
 
-        # --- Preferencias de visualización ---
         st.markdown("---")
         st.subheader("Resultados de la Búsqueda")
 
@@ -179,7 +176,6 @@ with tab_search:
             if not results:
                 st.info("La búsqueda se completó, pero no se encontraron fragmentos relevantes para tu consulta.")
             else:
-                # Métricas rápidas
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Documentos consultados", len(st.session_state.get('last_doc_paths', [])))
@@ -189,7 +185,6 @@ with tab_search:
                     avg_score = np.mean([to_percent(r.get('score', 0.0)) for r in results])
                     st.metric("Relevancia promedio", f"{avg_score:.1f}%")
 
-                # Tabla resumida + descarga
                 df = pd.DataFrame([{
                     "documento": r.get("document", ""),
                     "relevancia_%": round(to_percent(r.get("score", 0.0)), 1),
@@ -204,14 +199,12 @@ with tab_search:
                     data=csv,
                     file_name="resultados_busqueda.csv",
                     mime="text/csv",
-                    key="dl_results_csv",  # <- clave única
+                    key="dl_results_csv",
                 )
 
-                # Índice doc_stem -> ruta .md para el modo documento completo
                 stem_to_md = build_stem_to_md_map(selected_docs, summary_files_map)
                 last_query = st.session_state.get('last_query', '')
 
-                # Lista detallada
                 for i, res in enumerate(results):
                     score_percent = to_percent(res.get('score', 0.0))
                     keyword_count = res.get("keyword_count", 0)
@@ -235,13 +228,12 @@ with tab_search:
                                         st.markdown(highlight_text(display_txt, last_query))
                                     else:
                                         st.markdown(display_txt)
-                                # Botón de descarga del .md completo (clave única por resultado+doc)
                                 st.download_button(
-                                    "⬇️ Descargar .md",
+                                    "⬇ Descargar .md",
                                     data=raw_full.encode("utf-8"),
                                     file_name=md_path.name,
                                     mime="text/markdown",
-                                    key=f"dl_md_{i}_{doc_stem}",  # <- clave única
+                                    key=f"dl_md_{i}_{doc_stem}",
                                 )
                         else:
                             # Modo original: mostrar solo el fragmento
@@ -333,5 +325,5 @@ with tab_similarity:
                     data=csv_sim,
                     file_name="matriz_similitud.csv",
                     mime="text/csv",
-                    key="dl_matrix_csv",  # <- clave única
+                    key="dl_matrix_csv",
                 )

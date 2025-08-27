@@ -2,13 +2,11 @@
 
 import streamlit as st
 
-# --- st.set_page_config() debe ser el primer comando de Streamlit ---
 st.set_page_config(
     page_title="SmartReview",
     layout="wide",
 )
 
-# Resto de imports
 from lib.common import USERNAME, USER_FOLDER
 
 
@@ -22,9 +20,7 @@ if st.session_state.processing_notifications:
     for notif in st.session_state.processing_notifications:
         msg = notif.get("message", "")
         kind = (notif.get("type") or "").lower()
-        # Sin emojis en el texto ni en el icono (omitimos el parámetro icon)
         st.toast(msg)
-    # Limpia la cola para que no se repitan
     st.session_state.processing_notifications = []
 
 
@@ -49,7 +45,6 @@ def main():
         "explorarlos o iniciar una conversación con ellos."
     )
 
-    # --- Sección explicativa para presentación (sin emojis) ---
     st.subheader("¿Qué es SmartReview?")
     st.write(
         """
@@ -83,8 +78,6 @@ def main():
         - Consulta eficiente en corpus extensos y heterogéneos  
         """
     )
-
-    # Aviso si la carpeta de datos aún no existe
     if not USER_FOLDER.exists():
         st.warning("La carpeta de datos aún no existe. Procesa al menos un documento en la sección de carga.")
 

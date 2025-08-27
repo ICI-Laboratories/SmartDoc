@@ -1,5 +1,4 @@
 # frontend/pages/1_Upload.py
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import json
@@ -9,7 +8,6 @@ from typing import Tuple, Union, Dict, Any, List
 import requests
 import streamlit as st
 
-# --- CORRECCIÓN: Se importa la función get_http_session en lugar de la variable SESSION ---
 from lib.common import get_http_session, USERNAME, PROCESSOR_URL
 
 # -----------------------------
@@ -26,10 +24,10 @@ st.markdown(
 # -----------------------------
 # Parámetros (puedes ajustarlos)
 # -----------------------------
-MAX_FILE_MB = 100            # Tamaño máximo por archivo
-CONNECT_TIMEOUT = 10         # Timeout de conexión en segundos
-READ_TIMEOUT_PER_FILE = 300  # Timeout de lectura (por archivo) en segundos
-MAX_WORKERS_CAP = 4          # Máximo de hilos concurrentes
+MAX_FILE_MB = 50            # Tamaño máximo por archivo
+CONNECT_TIMEOUT = 30         # Timeout de conexión en segundos
+READ_TIMEOUT_PER_FILE = 600  # Timeout de lectura (por archivo) en segundos
+MAX_WORKERS_CAP = 6          # Máximo de hilos concurrentes
 RETRY_ATTEMPTS = 3           # Reintentos ante TIMEOUT/5xx
 RETRY_BACKOFF_BASE = 1.8     # Factor de backoff exponencial
 
@@ -74,14 +72,12 @@ def _post_with_retries(file) -> Tuple[str, Union[str, requests.Response, Excepti
     """
     Sube un archivo con reintentos ante TIMEOUT o 5xx.
     """
-    # --- CORRECCIÓN: Se obtiene la sesión dentro de la función del hilo ---
     session = get_http_session()
     files_payload = {"file": (file.name, file.getvalue(), getattr(file, "type", "application/pdf"))}
     data_payload = {"username": USERNAME}
 
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
-            # --- CORRECCIÓN: Se usa la variable local `session` ---
             r = session.post(
                 f"{PROCESSOR_URL}/process_document/",
                 files=files_payload,

@@ -83,13 +83,11 @@ if summary_files_map:
 with st.sidebar:
     st.header("Fuente de Datos")
     
-    # --- INICIO DE LA MODIFICACIÓN: Botón de Nueva Conversación ---
     def clear_chat():
         st.session_state.chat_history = []
         st.session_state.selected_docs = []
 
     st.button("Nueva Conversación ", on_click=clear_chat, use_container_width=True)
-    # --- FIN DE LA MODIFICACIÓN ---
 
     if not summary_files_map:
         st.warning("No se encontraron documentos procesados.")
@@ -130,13 +128,11 @@ with st.sidebar:
 # ---------------------------------------------------------------------
 st.header("Conversación")
 
-# --- INICIO DE LA MODIFICACIÓN: Mostrar historial en orden cronológico ---
 for entry in st.session_state.chat_history:
     with st.chat_message("user"):
         st.markdown(entry["question"])
     with st.chat_message("assistant"):
         st.markdown(entry["answer"])
-# --- FIN DE LA MODIFICACIÓN ---
 
 # Input del usuario
 if question := st.chat_input("Escribe tu pregunta sobre los documentos seleccionados..."):
@@ -144,7 +140,6 @@ if question := st.chat_input("Escribe tu pregunta sobre los documentos seleccion
         st.warning("Por favor, selecciona al menos un documento en la barra lateral antes de preguntar.")
         st.stop()
     
-    # Añadir pregunta al historial y mostrarla inmediatamente
     with st.chat_message("user"):
         st.markdown(question)
 
@@ -160,11 +155,8 @@ if question := st.chat_input("Escribe tu pregunta sobre los documentos seleccion
             
             answer = response.json().get("answer", "No se recibió una respuesta válida.")
             
-            # --- INICIO DE LA MODIFICACIÓN: Guardar historial en orden cronológico ---
             st.session_state.chat_history.append({"question": question, "answer": answer})
-            # --- FIN DE LA MODIFICACIÓN ---
             
-            # Refrescar la respuesta del asistente
             st.rerun()
 
         except requests.exceptions.RequestException as e:

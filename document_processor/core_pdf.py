@@ -4,8 +4,7 @@ import logging
 import re
 from typing import List, Tuple
 
-# Se añade la importación de fitz (PyMuPDF) y las opciones de Docling
-import fitz  # PyMuPDF
+import fitz
 from docling.datamodel.pipeline_options import (
     EasyOcrOptions,
     OcrOptions,
@@ -31,7 +30,7 @@ def extract_pages_from_text(text: str) -> List[Tuple[int, str]]:
                 out.append((num, body))
         except Exception:
             continue
-    if not out:  # fallback: todo como una sola página
+    if not out:
         out = [(1, text.strip())]
     return out
 
@@ -54,13 +53,11 @@ def convert_pdf_to_markdown(
     if not pdf_bytes:
         raise ValueError("Se recibieron bytes vacíos para el PDF.")
 
-    # --- 1. Intento de extracción directa con PyMuPDF ---
     try:
         pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         pages_text = [page.get_text() for page in pdf_doc]
         total_text_len = sum(len(text) for text in pages_text)
 
-        # Si se extrajo una cantidad de texto razonable, se considera un PDF nativo.
         if total_text_len > 100:
             logger.info("PDF con texto nativo detectado. Usando extracción directa (PyMuPDF).")
             md_parts = []
@@ -74,7 +71,6 @@ def convert_pdf_to_markdown(
             "Fallo en el intento de extracción directa con PyMuPDF: %s. Se procederá con OCR.", e
         )
 
-    # --- 2. Fallback a Docling (OCR) si no se encontró texto nativo ---
     logger.info(
         "El PDF parece escaneado o no tiene texto extraíble. Recurriendo a OCR con Docling."
     )
@@ -91,10 +87,9 @@ def convert_pdf_to_markdown(
         except Exception:
             pass
 
-        # --- Configuración de OCR para alta calidad ---
         ocr_opts = OcrOptions(
             easy_ocr=EasyOcrOptions(
-                lang=["es", "en"]  # Especificar idiomas mejora la precisión
+                lang=["es", "en"]
             )
         )
 
@@ -103,8 +98,8 @@ def convert_pdf_to_markdown(
             artifacts_path=os.getenv("DOCLING_ARTIFACTS_PATH"),
             enable_remote_services=os.getenv("DOCLING_ENABLE_REMOTE", "").lower() in {"1", "true", "yes"},
             do_table_structure=True,
-            ocr=ocr_opts, # Aplicar las opciones de OCR
-            images_dpi=300, # Aumentar DPI para mejorar la calidad de la imagen para el OCR
+            ocr=ocr_opts,
+            images_dpi=300,
         )
 
         mode = (os.getenv("DOCLING_TABLE_MODE") or table_mode).upper()

@@ -8,32 +8,18 @@ from typing import Tuple, List, Dict, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# ==================================================================
-# ========= INICIO DE LA MODIFICACIÓN: .env loading ===============
-# ==================================================================
 
-# Define una clase de configuración específica para este servicio
 class LLMSettings(BaseSettings):
-    # Apunta al archivo .env en la raíz del proyecto
     model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
-
-    # Define y lee las variables del .env usando el prefijo SMARTDOC_
-    # Pydantic convierte automáticamente el alias a mayúsculas para buscar la variable de entorno
     inference_server_url: str = Field(alias="SMARTDOC_LM_URL", default="http://localhost:1234/v1/chat/completions")
     model_name: str = Field(alias="SMARTDOC_MODEL", default="local-model")
     request_timeout: float = Field(alias="SMARTDOC_LM_TIMEOUT", default=60.0)
 
-# Crea una instancia única de la configuración para ser usada en este módulo
 settings = LLMSettings()
 
 HEADERS = {"Content-Type": "application/json"}
 
-# ==================================================================
-# ============== FIN DE LA MODIFICACIÓN ============================
-# ==================================================================
 
-
-# --- Helpers ---
 def get_classification_snippet(text: str) -> str:
     lower_text = text.lower()
     starts = []
@@ -46,7 +32,7 @@ def get_classification_snippet(text: str) -> str:
         return text[start_pos:start_pos + 2000]
     return " ".join(text.split()[:2000])
 
-# --- Core LLM Call ---
+
 def call_llm(
     prompt: str,
     schema: Optional[dict] = None,
@@ -55,7 +41,6 @@ def call_llm(
 ) -> dict:
     """Llama al servidor OpenAI-compatible y maneja errores."""
     payload = {
-        # Usa los valores de la configuración
         "model": settings.model_name,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
@@ -70,7 +55,6 @@ def call_llm(
 
     try:
         response = requests.post(
-            # Usa los valores de la configuración
             settings.inference_server_url,
             headers=HEADERS,
             json=payload,
@@ -89,7 +73,6 @@ def call_llm(
     except (json.JSONDecodeError, IndexError, KeyError) as e:
         return {"error": f"Invalid response format from LLM: {e}", "response_text": response.text}
 
-# --- Funciones principales ---
 def classify_text_with_lmstudio(text: str, categories_dict: dict) -> Tuple[str, str]:
     snippet = get_classification_snippet(text)
     prompt = (
@@ -161,7 +144,7 @@ def generate_short_summary_with_lmstudio(page_text: str, doc_name: str, page_num
 def chat_with_context(context: str, question: str) -> str:
     prompt = (
         "Basándote únicamente en el siguiente contexto, responde a la pregunta del usuario de forma clara y concisa. "
-        "Si la respuesta no se encuentra en el contexto, indica que no tienes suficiente información.\n\n"
+        "Si la respuesta no se encuentra en el contexto, indica que vuelva a formular su pregunta.\n\n"
         f"## Contexto:\n{context}\n\n"
         f"## Pregunta: {question}\n\n"
         "## Respuesta:"

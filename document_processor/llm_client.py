@@ -27,7 +27,7 @@ async def _retry(func, *args, retries: int = 2, delay: float = 1.0, **kwargs):
             last = e
             if i < retries:
                 await asyncio.sleep(delay)
-    raise last  # type: ignore
+    raise last
 
 
 async def classify_text(client: httpx.AsyncClient, snippet: str, existing_categories: Dict[str, List[str]]):

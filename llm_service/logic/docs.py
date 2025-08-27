@@ -8,9 +8,6 @@ from typing import List, Dict
 
 from llm_service.logic.core import call_llm, chat_with_context
 
-# ==================================================================
-# ========= INICIO DE LA MODIFICACIÓN: ESTRATEGIA DE CONTEXTO ======
-# ==================================================================
 
 # Límite de tokens aproximado para el contexto final.
 CONTEXT_TOKEN_LIMIT = 31000
@@ -29,16 +26,12 @@ def _get_final_sources(relevant_docs: Dict, doc_paths: List[str]) -> List[str]:
             sources.append(f"{pdf_name} (págs: {', '.join(map(str, pages))})")
     return sources
 
-# ==================================================================
-# ============== FIN DE LA MODIFICACIÓN ============================
-# ==================================================================
 
 
 # --- Utilidades de paginado (sin cambios) ---
 _PAGE_SPLIT = re.compile(r'--- Página\s+(\d+)\s+---')
 
 def _extract_pages(full_text: str) -> List[tuple[int, str]]:
-    # ... (código sin cambios)
     parts = re.split(_PAGE_SPLIT, full_text)
     out: List[tuple[int, str]] = []
     for i in range(1, len(parts), 2):
@@ -52,7 +45,6 @@ def _extract_pages(full_text: str) -> List[tuple[int, str]]:
     return out
 
 def get_pages_text_by_numbers(full_text: str, pages_list: List[int]) -> str:
-    # ... (código sin cambios)
     wanted = set(p for p in pages_list if isinstance(p, int) and p > 0)
     if not wanted:
         return ""
@@ -61,7 +53,6 @@ def get_pages_text_by_numbers(full_text: str, pages_list: List[int]) -> str:
 
 # --- Relevancia multi-documento (sin cambios) ---
 def get_relevant_pages_from_multiple_docs(summaries: List[Dict], question: str) -> Dict:
-    # ... (código sin cambios)
     prompt = (
         "Analiza los resúmenes de varios documentos y una pregunta. Devuelve SOLO JSON con los documentos relevantes.\n"
         "Reglas:\n"
@@ -102,7 +93,6 @@ def get_relevant_pages_from_multiple_docs(summaries: List[Dict], question: str) 
     return res
 
 def get_context_from_multiple_docs(relevant_docs: Dict, doc_paths: List[str]) -> str:
-    # ... (código sin cambios)
     chunks: List[str] = []
     for item in relevant_docs.get("relevant_documents", []):
         did, pages = item.get("doc_id", -1), item.get("pages", [])
@@ -189,9 +179,8 @@ def chat_with_multiple_docs(doc_summaries: List[Dict], doc_paths: List[str], que
     return answer
 
 
-# --- Compatibilidad single-doc (sin cambios) ---
+# --- Compatibilidad single-doc ---
 def get_relevant_pages_from_summary(summary: Dict, question: str) -> Dict:
-    # ... (código sin cambios)
     multi = get_relevant_pages_from_multiple_docs([summary], question)
     pages = []
     for item in multi.get("relevant_documents", []):

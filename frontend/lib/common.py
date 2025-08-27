@@ -5,10 +5,8 @@ import getpass
 import json
 from pathlib import Path
 
-# --- AÑADE ESTAS DOS LÍNEAS AQUÍ ---
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent.parent / '.env')
-# ------------------------------------
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -21,14 +19,11 @@ import streamlit as st
 PROCESSOR_URL = os.getenv("SMARTDOC_PROCESSOR_URL", "http://127.0.0.1:8002")
 LLM_URL = os.getenv("SMARTDOC_LLM_URL", "http://127.0.0.1:8001")
 
-# Debe ser la MISMA ruta base que usa tu backend (document_processor)
 BASE_DIR = Path(os.getenv("SMARTDOC_BASE", Path.home() / "SmartDocData"))
 USERNAME = getpass.getuser()
 USER_FOLDER = BASE_DIR / USERNAME
 
-# ===========================
-# Recursos (HTTP Session pool)
-# ===========================
+
 @st.cache_resource
 def get_http_session() -> requests.Session:
     s = requests.Session()
@@ -49,9 +44,7 @@ def get_http_session() -> requests.Session:
     )
     return s
 
-# =====================
-# Funciones cacheadas
-# =====================
+
 @st.cache_data(ttl=60, show_spinner=False)
 def get_available_summaries(user_folder: Path) -> dict:
     """
@@ -67,7 +60,6 @@ def get_available_summaries(user_folder: Path) -> dict:
             key = f"{summary_path.parent.parent.name}/{summary_path.parent.name}/{doc_name}"
             summary_files_map[key] = str(summary_path)
         except IndexError:
-            # Ignora archivos fuera de la estructura esperada
             continue
     return summary_files_map
 
@@ -101,9 +93,8 @@ def read_markdown_cached(path: str, mtime_ns: int) -> str:
 @st.cache_data(max_entries=256, show_spinner=False)
 def read_json_cached(path: str, mtime_ns: int) -> dict:
     p = Path(path)
-    # Intentamos orjson si está disponible (más rápido), si no, json estándar
     try:
-        import orjson  # type: ignore
+        import orjson
         return orjson.loads(p.read_bytes())
     except Exception:
         return json.loads(p.read_text(encoding="utf-8"))

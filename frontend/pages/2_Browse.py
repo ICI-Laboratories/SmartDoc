@@ -15,7 +15,6 @@ from lib.common import (
 st.title("Explorar y Visualizar Documentos")
 st.markdown("Selecciona una categoría, una subcategoría y un documento para verlo en Markdown o como PDF.")
 
-# Si no hay carpeta de usuario, salimos temprano
 if not USER_FOLDER.exists():
     st.info("No hay documentos. Procesa algunos en la sección de carga.")
     st.stop()
