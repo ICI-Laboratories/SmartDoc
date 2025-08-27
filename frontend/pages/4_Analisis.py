@@ -161,7 +161,7 @@ with tab_search:
         st.subheader("Resultados de la Búsqueda")
 
         show_full_doc = st.toggle(
-            "👀 Mostrar documento completo en lugar del fragmento",
+            "Mostrar documento completo en lugar del fragmento",
             value=False,
             help="Si está activado, se renderiza el .md entero del resultado."
         )
@@ -198,7 +198,7 @@ with tab_search:
                     st.dataframe(df, use_container_width=True, hide_index=True)
                 csv = df.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    "⬇️ Descargar resultados (CSV)",
+                    "⬇ Descargar resultados (CSV)",
                     data=csv,
                     file_name="resultados_busqueda.csv",
                     mime="text/csv",
@@ -324,7 +324,7 @@ with tab_similarity:
                     st.dataframe(df_sim.style.format("{:.2f}"), use_container_width=True)
                 csv_sim = df_sim.to_csv().encode("utf-8")
                 st.download_button(
-                    "⬇️ Descargar matriz (CSV)",
+                    "⬇ Descargar matriz (CSV)",
                     data=csv_sim,
                     file_name="matriz_similitud.csv",
                     mime="text/csv",
