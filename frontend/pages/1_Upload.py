@@ -8,7 +8,8 @@ from typing import Tuple, Union, Dict, Any, List
 import requests
 import streamlit as st
 
-from lib.common import get_http_session, USERNAME, PROCESSOR_URL
+# MODIFICACIÓN 1: Importar get_session_id y ajustar las otras importaciones
+from lib.common import get_http_session, get_session_id, PROCESSOR_URL
 
 # -----------------------------
 # Configuración de la página
@@ -68,13 +69,15 @@ def _safe_json(resp: requests.Response) -> Dict[str, Any]:
         except Exception:
             return {"detail": resp.text.strip()[:300] or "Respuesta no parseable."}
 
-def _post_with_retries(file) -> Tuple[str, Union[str, requests.Response, Exception]]:
+# MODIFICACIÓN 2: La función ahora acepta y usa el session_id
+def _post_with_retries(file, session_id: str) -> Tuple[str, Union[str, requests.Response, Exception]]:
     """
     Sube un archivo con reintentos ante TIMEOUT o 5xx.
     """
     session = get_http_session()
     files_payload = {"file": (file.name, file.getvalue(), getattr(file, "type", "application/pdf"))}
-    data_payload = {"username": USERNAME}
+    # Usa el ID de sesión del visitante como 'username' para el backend
+    data_payload = {"username": session_id}
 
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
@@ -130,16 +133,20 @@ if submit:
         )
         st.stop()
 
+    # MODIFICACIÓN 3: Obtener el ID de sesión único antes de empezar a subir
+    current_session_id = get_session_id()
+
     max_workers = min(MAX_WORKERS_CAP, len(files_to_send))
     progress = st.progress(0.0)
     status_placeholder = st.empty()
     results_table: List[Dict[str, str]] = []
 
-    st.info(f"Enviando {len(files_to_send)} archivo(s) al backend con hasta {max_workers} subidas en paralelo.")
+    st.info(f"Enviando {len(files_to_send)} archivo(s) para el usuario '{current_session_id}' con hasta {max_workers} subidas en paralelo.")
     started = time.time()
     completed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = {ex.submit(_post_with_retries, f): f.name for f in files_to_send}
+        # MODIFICACIÓN 4: Pasar el ID de sesión a la función de subida
+        futures = {ex.submit(_post_with_retries, f, current_session_id): f.name for f in files_to_send}
         for fut in as_completed(futures):
             name, resp_or_err = fut.result()
             data = {}

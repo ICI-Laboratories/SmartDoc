@@ -7,7 +7,7 @@ use axum::{
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{any, get},
+    routing::{get, post}, // Se ha eliminado 'any' de esta línea
     Json, Router,
 };
 use dashmap::DashMap;
@@ -72,7 +72,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/metrics", get(metrics_handler))
-        .route("/process_document/*path", any(process_document_handler))
+        .route("/process_document/", post(process_document_handler))
         .fallback(llm_handler)
         .layer(middleware::from_fn_with_state(state.clone(), user_validator))
         .layer(CompressionLayer::new())
@@ -154,7 +154,6 @@ async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response
     let query = parts.uri.query().map(|q| format!("?{q}")).unwrap_or_default();
     let target_url = format!("{}{}{}", base_url.trim_end_matches('/'), path, query);
 
-    // Limite de 50MB
     let body_bytes = match to_bytes(body, 50 * 1024 * 1024).await {
         Ok(b) => b,
         Err(e) => {
@@ -168,7 +167,6 @@ async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response
         }
     };
 
-    // --- Conversión de tipos entre http v1 (axum) y http v0.2 (reqwest 0.11) ---
     let method = method_to_reqwest(&parts.method);
     let req_headers = headers_axum_to_reqwest(&parts.headers);
 
@@ -179,13 +177,11 @@ async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response
 
     match reqwest_req.send().await {
         Ok(resp) => {
-            // Status: reqwest::StatusCode (http 0.2) -> axum::http::StatusCode (http 1)
             let status = StatusCode::from_u16(resp.status().as_u16())
                 .unwrap_or(StatusCode::BAD_GATEWAY);
 
             let mut builder = Response::builder().status(status);
 
-            // Copiar headers respuesta: reqwest -> axum (filtrando hop-by-hop)
             if let Some(hm) = builder.headers_mut() {
                 for (name, value) in resp.headers().iter() {
                     if !is_hop_by_hop(name.as_str()) {
@@ -199,7 +195,6 @@ async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response
                 }
             }
 
-            // Streaming de cuerpo
             builder
                 .body(Body::from_stream(resp.bytes_stream()))
                 .unwrap_or_else(|_| {
@@ -228,7 +223,6 @@ async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response
 }
 
 fn method_to_reqwest(method: &Method) -> reqwest::Method {
-    // Evita TryFrom entre crates `http` distintos
     reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET)
 }
 

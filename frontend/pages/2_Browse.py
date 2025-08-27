@@ -5,7 +5,7 @@ import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
 
 from lib.common import (
-    USER_FOLDER,
+    get_current_user_folder,
     list_categories,
     list_subcategories,
     list_md_files,
@@ -15,12 +15,15 @@ from lib.common import (
 st.title("Explorar y Visualizar Documentos")
 st.markdown("Selecciona una categoría, una subcategoría y un documento para verlo en Markdown o como PDF.")
 
+# Usa la ruta del usuario actual, no una ruta global
+USER_FOLDER = get_current_user_folder()
+
 if not USER_FOLDER.exists():
-    st.info("No hay documentos. Procesa algunos en la sección de carga.")
+    st.info("No has procesado ningún documento todavía. Ve a la sección de 'Cargar' para empezar.")
     st.stop()
 
 # --- Selección de categoría y subcategoría ---
-categories = list_categories(USER_FOLDER)
+categories = list_categories()
 col1, col2 = st.columns(2)
 
 selected_category = col1.selectbox("Categoría", [""] + categories, key="cat_select")

@@ -8,7 +8,7 @@ import streamlit as st
 from lib.common import (
     get_http_session,
     LLM_URL,
-    USER_FOLDER,
+    get_current_user_folder,
     get_available_summaries,
     read_json_cached,
 )
@@ -51,9 +51,10 @@ def load_summary(path: Path) -> dict:
     return read_json_cached(str(path), mtime_json)
 
 # ---------------------------------------------------------------------
-# Carga de resúmenes y metadatos disponibles
+# Carga de resúmenes y metadatos disponibles para el usuario actual
 # ---------------------------------------------------------------------
-summary_files_map: Dict[str, str] = get_available_summaries(USER_FOLDER)
+USER_FOLDER = get_current_user_folder()
+summary_files_map: Dict[str, str] = get_available_summaries()
 
 # Índices y metadatos globales
 by_cat: Dict[str, Dict[str, List[str]]] = {}
@@ -90,7 +91,7 @@ with st.sidebar:
     st.button("Nueva Conversación ", on_click=clear_chat, use_container_width=True)
 
     if not summary_files_map:
-        st.warning("No se encontraron documentos procesados.")
+        st.warning("No has procesado documentos. Ve a 'Cargar' para empezar.")
         st.stop()
 
     categories = sorted(by_cat.keys())

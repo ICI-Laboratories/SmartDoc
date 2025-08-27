@@ -10,16 +10,17 @@ import pandas as pd
 import plotly.graph_objects as go
 import re
 
+# MODIFICACIÓN 1: Se elimina la importación de 'USER_FOLDER' que ya no existe
+# y se ajusta 'get_available_summaries'
 from lib.common import (
     get_http_session,
     LLM_URL,
-    USER_FOLDER,
     get_available_summaries,
 )
 
 st.set_page_config(page_title="Análisis de Documentos", layout="wide")
 
-st.title(" Análisis Cuantitativo de Documentos")
+st.title("Análisis Cuantitativo de Documentos")
 
 # ---------------------------------------------------------------------
 # Helpers
@@ -73,9 +74,11 @@ def to_percent(x: float) -> float:
 # ---------------------------------------------------------------------
 # Carga de documentos disponibles
 # ---------------------------------------------------------------------
-summary_files_map: Dict[str, str] = get_available_summaries(USER_FOLDER)
+# MODIFICACIÓN 2: La función ahora se llama sin argumentos,
+# ya que detecta al usuario de la sesión automáticamente.
+summary_files_map: Dict[str, str] = get_available_summaries()
 if not summary_files_map:
-    st.warning("No se encontraron documentos procesados. Procesa al menos un documento en la sección de 'Carga'.")
+    st.warning("No se encontraron documentos procesados para tu sesión. Procesa al menos un documento en la sección de 'Cargar'.")
     st.stop()
 
 # ---------------------------------------------------------------------

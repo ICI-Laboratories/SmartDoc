@@ -7,7 +7,8 @@ st.set_page_config(
     layout="wide",
 )
 
-from lib.common import USERNAME, USER_FOLDER
+# MODIFICACIÓN: Se importan solo las funciones necesarias
+from lib.common import get_current_user_folder
 
 
 # --- Estado de Sesión para Notificaciones ---
@@ -27,11 +28,9 @@ if st.session_state.processing_notifications:
 # --- Sidebar (común) ---
 def sidebar_info():
     with st.sidebar:
+        # MODIFICACIÓN: Se ha eliminado toda la información de depuración
         st.markdown("### SmartReview")
         st.caption("Asistente de documentos")
-        st.divider()
-        st.markdown(f"**Usuario:** `{USERNAME}`")
-        st.markdown(f"**Carpeta de datos:** `{USER_FOLDER}`")
         st.divider()
         st.caption("© 2025 SmartReview")
 
@@ -62,10 +61,10 @@ def main():
     st.subheader("Funcionalidades principales")
     st.markdown(
         """
-        - Extracción de texto con OCR para PDFs escaneados  
-        - Clasificación temática automática  
-        - Resúmenes por página con título, puntos clave e idea principal  
-        - Búsqueda y respuesta basadas en contexto local  
+        - Extracción de texto con OCR para PDFs escaneados
+        - Clasificación temática automática
+        - Resúmenes por página con título, puntos clave e idea principal
+        - Búsqueda y respuesta basadas en contexto local
         - Interfaz de chat para consultas en lenguaje natural
         """
     )
@@ -73,13 +72,15 @@ def main():
     st.subheader("Beneficios")
     st.markdown(
         """
-        - Privacidad total: todos los procesos se realizan en el equipo local  
-        - Menor carga computacional gracias a la reducción de contexto  
-        - Consulta eficiente en corpus extensos y heterogéneos  
+        - Privacidad total: todos los procesos se realizan en el equipo local
+        - Menor carga computacional gracias a la reducción de contexto
+        - Consulta eficiente en corpus extensos y heterogéneos
         """
     )
-    if not USER_FOLDER.exists():
-        st.warning("La carpeta de datos aún no existe. Procesa al menos un documento en la sección de carga.")
+    
+    user_folder = get_current_user_folder()
+    if not user_folder.exists():
+        st.info("Tu espacio de trabajo está listo. Procesa tu primer documento en la sección de 'Cargar'.")
 
 
 if __name__ == "__main__":
