@@ -1,4 +1,4 @@
-# SmartDoc: Asistente Inteligente de Documentos (Local-First)
+# SmartReview: Asistente Inteligente de Documentos (Local-First)
 
 SmartDoc es una plataforma de software diseñada para la revisión y consulta inteligente de literatura científica. Opera exclusivamente en el entorno local del usuario para garantizar la máxima confidencialidad y resuelve la sobrecarga informativa asociada con la investigación moderna.
 
