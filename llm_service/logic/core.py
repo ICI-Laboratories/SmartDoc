@@ -1,5 +1,3 @@
-# llm_service/logic/core.py
-
 import json
 import requests
 from pathlib import Path
@@ -11,9 +9,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
-    inference_server_url: str = Field(alias="SMARTDOC_LM_URL", default="http://localhost:1234/v1/chat/completions")
-    model_name: str = Field(alias="SMARTDOC_MODEL", default="local-model")
-    request_timeout: float = Field(alias="SMARTDOC_LM_TIMEOUT", default=60.0)
+    inference_server_url: str = Field(alias="SMARTREVIEW_LM_URL", default="http://localhost:1234/v1/chat/completions")
+    model_name: str = Field(alias="SMARTREVIEW_MODEL", default="local-model")
+    request_timeout: float = Field(alias="SMARTREVIEW_LM_TIMEOUT", default=60.0)
 
 settings = LLMSettings()
 
@@ -39,7 +37,6 @@ def call_llm(
     temperature: float = 0.7,
     max_tokens: int = 3000,
 ) -> dict:
-    """Llama al servidor OpenAI-compatible y maneja errores."""
     payload = {
         "model": settings.model_name,
         "messages": [{"role": "user", "content": prompt}],

@@ -1,5 +1,3 @@
-# frontend/app.py
-
 import streamlit as st
 
 st.set_page_config(
@@ -7,16 +5,11 @@ st.set_page_config(
     layout="wide",
 )
 
-# MODIFICACIÓN: Se importan solo las funciones necesarias
 from lib.common import get_current_user_folder
 
-
-# --- Estado de Sesión para Notificaciones ---
 if "processing_notifications" not in st.session_state:
     st.session_state.processing_notifications = []
 
-
-# --- Lógica para mostrar notificaciones (sin emojis) ---
 if st.session_state.processing_notifications:
     for notif in st.session_state.processing_notifications:
         msg = notif.get("message", "")
@@ -25,10 +18,8 @@ if st.session_state.processing_notifications:
     st.session_state.processing_notifications = []
 
 
-# --- Sidebar (común) ---
 def sidebar_info():
     with st.sidebar:
-        # MODIFICACIÓN: Se ha eliminado toda la información de depuración
         st.markdown("### SmartReview")
         st.caption("Asistente de documentos")
         st.divider()

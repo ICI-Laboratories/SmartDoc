@@ -1,5 +1,3 @@
-# frontend/lib/common.py
-
 import os
 import getpass
 import json
@@ -16,64 +14,41 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import streamlit as st
 
-# ===============================
-# Configuración de la Aplicación
-# ===============================
 API_GATEWAY_URL = "http://127.0.0.1:8000"
 PROCESSOR_URL = API_GATEWAY_URL
 LLM_URL = API_GATEWAY_URL
 
-BASE_DIR = Path(os.getenv("SMARTDOC_BASE", Path.home() / "SmartDocData"))
+BASE_DIR = Path(os.getenv("SMARTREVIEW_BASE", Path.home() / "SmartReviewData"))
 SERVER_USERNAME = getpass.getuser()
 
-# --- LÓGICA DE SESIÓN PERSISTENTE USANDO PARÁMETROS DE URL ---
 
 def get_session_id() -> str:
-    """
-    Gestiona un ID de sesión único y persistente para cada usuario a través de recargas.
-    Utiliza los parámetros de la URL como fuente de verdad.
-    """
-    # 1. Primero, revisa si el ID ya está en la URL. Esta es la fuente más confiable.
     if "session_id" in st.query_params:
         session_id = st.query_params["session_id"]
-        # Guarda el ID en el estado de la sesión para no tener que leer la URL en cada navegación.
         st.session_state['session_id'] = session_id
         return session_id
 
-    # 2. Si no está en la URL, revisa si ya lo habíamos generado en esta sesión (para navegación entre páginas).
     if 'session_id' in st.session_state:
-        # Si ya lo teníamos, lo añadimos a la URL para que persista en la siguiente recarga.
         st.query_params["session_id"] = st.session_state['session_id']
         return st.session_state['session_id']
 
-    # 3. Si no está en ningún lado, es un visitante completamente nuevo.
-    # Generamos un nuevo ID.
     random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
     new_session_id = f"usuario_web_{random_suffix}"
     
-    # Lo guardamos en el estado de la sesión.
     st.session_state['session_id'] = new_session_id
     
-    # Y lo más importante: lo añadimos a la URL. Streamlit volverá a ejecutar el script con la URL actualizada.
     st.query_params["session_id"] = new_session_id
     
     return new_session_id
 
 
 def get_current_user_folder() -> Path:
-    """
-    Devuelve la ruta de datos específica para el visitante actual de la web.
-    """
     session_user_id = get_session_id()
     return BASE_DIR / session_user_id
 
 
 @st.cache_resource
 def get_http_session() -> requests.Session:
-    """
-    Crea una sesión de requests e inyecta automáticamente el
-    X-User-ID para CADA petición, usando el ID de sesión del navegador.
-    """
     s = requests.Session()
     retries = Retry(
         total=2,
@@ -98,9 +73,6 @@ def get_http_session() -> requests.Session:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_available_summaries() -> dict:
-    """
-    Busca documentos ÚNICAMENTE en la carpeta del usuario de la sesión actual.
-    """
     user_folder = get_current_user_folder()
     if not user_folder.exists():
         return {}
@@ -117,9 +89,6 @@ def get_available_summaries() -> dict:
 
 @st.cache_data(ttl=30, show_spinner=False)
 def list_categories() -> list[str]:
-    """
-    Lista categorías ÚNICAMENTE del usuario de la sesión actual.
-    """
     user_folder = get_current_user_folder()
     if not user_folder.exists():
         return []

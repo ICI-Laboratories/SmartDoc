@@ -1,4 +1,3 @@
-// api_gateway/src/main.rs
 mod database;
 
 use axum::{
@@ -7,7 +6,7 @@ use axum::{
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post}, // Se ha eliminado 'any' de esta línea
+    routing::{get, post},
     Json, Router,
 };
 use dashmap::DashMap;
@@ -34,7 +33,7 @@ struct AppState {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let db_path = Path::new("smartdoc_users.db");
+    let db_path = Path::new("smartreview_users.db");
     let doc_processor_url = "http://127.0.0.1:8002".to_string();
     let llm_service_url = "http://127.0.0.1:8001".to_string();
 
@@ -57,7 +56,6 @@ async fn main() {
         llm_service_url,
     };
 
-    // GC simple de usuarios activos (TTL 5 min)
     {
         let active = state.active_users.clone();
         tokio::spawn(async move {
@@ -144,8 +142,6 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         })),
     )
 }
-
-// -------------------- Proxy con conversiones explícitas --------------------
 
 async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response {
     let (parts, body) = req.into_parts();

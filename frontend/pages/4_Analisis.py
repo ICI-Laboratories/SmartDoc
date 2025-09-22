@@ -1,5 +1,3 @@
-# frontend/pages/4_Análisis.py
-
 from pathlib import Path
 from typing import Dict, List
 import json
@@ -10,8 +8,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import re
 
-# MODIFICACIÓN 1: Se elimina la importación de 'USER_FOLDER' que ya no existe
-# y se ajusta 'get_available_summaries'
 from lib.common import (
     get_http_session,
     LLM_URL,
@@ -22,11 +18,7 @@ st.set_page_config(page_title="Análisis de Documentos", layout="wide")
 
 st.title("Análisis Cuantitativo de Documentos")
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
 def build_doc_paths(keys: List[str], summary_map: Dict[str, str]) -> List[str]:
-    """Construye rutas válidas a .md a partir de las claves seleccionadas."""
     paths = []
     for key in keys:
         md = Path(summary_map[key]).with_suffix("").with_suffix(".md")
@@ -35,10 +27,6 @@ def build_doc_paths(keys: List[str], summary_map: Dict[str, str]) -> List[str]:
     return paths
 
 def build_stem_to_md_map(keys: List[str], summary_map: Dict[str, str]) -> Dict[str, Path]:
-    """
-    Crea un índice {stem_del_documento: ruta_md} para poder abrir el .md completo
-    usando el 'document' que llega en los resultados (que es md.stem).
-    """
     idx = {}
     for k in keys:
         md = Path(summary_map[k]).with_suffix("").with_suffix(".md")
@@ -58,7 +46,6 @@ def clamp_for_display(text: str, max_chars: int = 1_000_000) -> str:
     return text[:max_chars] + "\n\n…\n\n**(Truncado para visualización)**"
 
 def highlight_text(text: str, query: str) -> str:
-    """Resalta palabras de la consulta en el texto (sin romper markdown)."""
     tokens = [t for t in re.findall(r"\w+", query, flags=re.UNICODE) if len(t) >= 2]
     if not tokens:
         return text
@@ -71,19 +58,11 @@ def to_percent(x: float) -> float:
     except Exception:
         return 0.0
 
-# ---------------------------------------------------------------------
-# Carga de documentos disponibles
-# ---------------------------------------------------------------------
-# MODIFICACIÓN 2: La función ahora se llama sin argumentos,
-# ya que detecta al usuario de la sesión automáticamente.
 summary_files_map: Dict[str, str] = get_available_summaries()
 if not summary_files_map:
     st.warning("No se encontraron documentos procesados para tu sesión. Procesa al menos un documento en la sección de 'Cargar'.")
     st.stop()
 
-# ---------------------------------------------------------------------
-# Selección de Documentos en la Barra Lateral
-# ---------------------------------------------------------------------
 with st.sidebar:
     st.header("Fuente de Datos para Análisis")
     doc_keys = sorted(summary_files_map.keys())
@@ -109,9 +88,6 @@ with st.sidebar:
 
 tab_search, tab_similarity = st.tabs(["Búsqueda Semántica", "Análisis de Similitud"])
 
-# =====================================================================
-# PESTAÑA 1: BÚSQUEDA SEMÁNTICA
-# =====================================================================
 with tab_search:
     st.header("Búsqueda por Significado")
 
@@ -239,7 +215,6 @@ with tab_search:
                                     key=f"dl_md_{i}_{doc_stem}",
                                 )
                         else:
-                            # Modo original: mostrar solo el fragmento
                             with st.expander("Ver texto del fragmento"):
                                 highlighted = highlight_text(res.get('text', ''), last_query)
                                 st.markdown(f"> {highlighted}")
@@ -247,9 +222,6 @@ with tab_search:
         else:
             st.info("Ingresa una consulta y presiona **Buscar Relevancia** para ver los resultados.")
 
-# =====================================================================
-# PESTAÑA 2: ANÁLISIS DE SIMILITUD
-# =====================================================================
 with tab_similarity:
     st.header("Matriz de Similitud entre Documentos")
     st.markdown(
@@ -298,7 +270,6 @@ with tab_similarity:
             if matrix.size == 0 or not labels:
                 st.info("No hay datos de similitud para mostrar.")
             else:
-                # Heatmap con anotaciones
                 display_vals = np.round(matrix, 2)
                 fig = go.Figure(data=go.Heatmap(
                     z=matrix,
@@ -318,7 +289,6 @@ with tab_similarity:
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-                # Tabla + descarga
                 df_sim = pd.DataFrame(matrix, index=labels, columns=labels)
                 with st.expander("Ver tabla de similitud"):
                     st.dataframe(df_sim.style.format("{:.2f}"), use_container_width=True)

@@ -1,20 +1,14 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Environments
 .env/
 .env.*
-
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
-
-# Distribution / packaging
 .Python
 build/
 dist/
@@ -32,49 +26,30 @@ wheels/
 *.tar.bz2
 *.tgz
 *.tar.xz
-
-# Streamlit
 .streamlit/
-
-# OAuth related - tokens, secrets (adjust as needed)
-*.json # If you store tokens in json files
-*.log  # If you log sensitive information
-/secrets.toml # Streamlit secrets file
-
-# OS generated files #
+*.json
+*.log
+/secrets.toml
 .DS_Store
 Thumbs.db
-
-# Rust
 /target/
 **/*.rs.bk
-
-# Cargo package files
 Cargo.lock
 Cargo.toml.orig
-
-# Rust/Cargo specific
 /.cargo/
 .cargo/
 *.crate
-
-# Rust build scripts output
 build.rs
-
-# Rust coverage/debug/test output
 /coverage/
 *.profraw
 *.profdata
 *.gcda
 *.gcno
 *.gcov
-
-# IDEs and editors
 .idea/
 *.iml
 .vscode/
-
 api_gateway/target/
-api_gateway/smartdoc_users.db
-api_gateway/smartdoc_users.db-shm
-api_gateway/smartdoc_users.db-wal
+api_gateway/smartreview_users.db
+api_gateway/smartreview_users.db-shm
+api_gateway/smartreview_users.db-wal

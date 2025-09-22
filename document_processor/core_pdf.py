@@ -44,12 +44,6 @@ def convert_pdf_to_markdown(
     image_mode: str = "PLACEHOLDER",
     images_scale: float = 1.5,
 ) -> str:
-    """
-    Convierte PDF a Markdown con un enfoque híbrido y optimizado para calidad.
-    1.  Intenta extraer texto directamente con PyMuPDF (rápido y preciso).
-    2.  Si no hay texto nativo, recurre a Docling para el OCR, configurado para
-        alta calidad (idiomas específicos y mayor DPI).
-    """
     if not pdf_bytes:
         raise ValueError("Se recibieron bytes vacíos para el PDF.")
 

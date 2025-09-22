@@ -1,5 +1,3 @@
-# frontend/pages/3_Chat.py
-
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import requests
@@ -15,17 +13,11 @@ from lib.common import (
 
 st.title("Chat con documentos")
 
-# ---------------------------------------------------------------------
-# Estado de la sesión para el chat
-# ---------------------------------------------------------------------
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "selected_docs" not in st.session_state:
     st.session_state.selected_docs = []
 
-# ---------------------------------------------------------------------
-# Helpers de metadatos
-# ---------------------------------------------------------------------
 def extract_topic_metadata(summary_obj: dict) -> Tuple[Optional[str], List[str]]:
     topic = None
     subtopics: List[str] = []
@@ -50,13 +42,9 @@ def load_summary(path: Path) -> dict:
     mtime_json = path.stat().st_mtime_ns
     return read_json_cached(str(path), mtime_json)
 
-# ---------------------------------------------------------------------
-# Carga de resúmenes y metadatos disponibles para el usuario actual
-# ---------------------------------------------------------------------
 USER_FOLDER = get_current_user_folder()
 summary_files_map: Dict[str, str] = get_available_summaries()
 
-# Índices y metadatos globales
 by_cat: Dict[str, Dict[str, List[str]]] = {}
 summary_path_by_key: Dict[str, Path] = {}
 metadata_by_doc: Dict[str, dict] = {}
@@ -78,9 +66,6 @@ if summary_files_map:
         except Exception:
             metadata_by_doc[doc_key] = {"topic": None, "subtopics": [], "category": "N/A"}
 
-# ---------------------------------------------------------------------
-# Panel lateral de selección de documentos
-# ---------------------------------------------------------------------
 with st.sidebar:
     st.header("Fuente de Datos")
     
@@ -124,9 +109,6 @@ with st.sidebar:
     )
     st.info(f"**Seleccionados:** {len(st.session_state.selected_docs)} documento(s).")
 
-# ---------------------------------------------------------------------
-# Área principal de Chat
-# ---------------------------------------------------------------------
 st.header("Conversación")
 
 for entry in st.session_state.chat_history:
@@ -135,7 +117,6 @@ for entry in st.session_state.chat_history:
     with st.chat_message("assistant"):
         st.markdown(entry["answer"])
 
-# Input del usuario
 if question := st.chat_input("Escribe tu pregunta sobre los documentos seleccionados..."):
     if not st.session_state.selected_docs:
         st.warning("Por favor, selecciona al menos un documento en la barra lateral antes de preguntar.")
