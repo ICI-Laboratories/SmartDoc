@@ -37,15 +37,13 @@ try:
 except Exception as e:
     logger.error(f"FATAL: No se pudo cargar el modelo de SentenceTransformer: {e}")
     EMBEDDING_MODEL = None
-# --- FIN DE LA MODIFICACIÓN ---
 
 
-# ---------------- Settings + seguridad ----------------
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
 
     llm_service_url: str = Field(default="http://127.0.0.1:8001")
-    base_dir: Path = Field(alias="SMARTDOC_BASE", default=Path.home() / "SmartDocData")
+    base_dir: Path = Field(alias="SMARTREVIEW_BASE", default=Path.home() / "SmartReviewData")
     enable_cors: bool = True
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
     require_api_key: bool = False
@@ -70,8 +68,7 @@ async def require_api_key(request: Request, settings: Settings = Depends(get_set
         raise HTTPException(status_code=401, detail="API key inválida o ausente.")
 
 
-# ---------------- App ----------------
-app = FastAPI(title="SmartDoc Document Processor", version="1.5")
+app = FastAPI(title="SmartReview Document Processor", version="1.5")
 _settings = get_settings()
 
 if _settings.enable_cors:
@@ -93,7 +90,6 @@ class ProcessResponse(BaseModel):
     summary_path: str
 
 
-# ---------------- Summary Logic ----------------
 async def create_and_save_summary_async(
     markdown_text: str,
     settings: Settings,
@@ -121,7 +117,6 @@ async def create_and_save_summary_async(
         logger.exception("Error guardando resumen: %s", e)
 
 
-# ---------------- Endpoints ----------------
 @app.post(
     "/process_document/",
     response_model=ProcessResponse,
@@ -145,7 +140,6 @@ async def process_document(
 
     user_folder = settings.base_dir / slugify(username)
 
-    # 1. Conversión
     try:
         markdown_content = convert_pdf_to_markdown(pdf_bytes)
         if not markdown_content:
@@ -153,7 +147,6 @@ async def process_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en conversión PDF→MD: {e}")
 
-    # 2. Clasificación
     snippet = markdown_content[: settings.classify_snippet_len]
     existing = get_existing_categories(user_folder)
     client = get_http_client(settings.llm_service_url, settings.http_timeout_seconds)
@@ -164,7 +157,6 @@ async def process_document(
     except httpx.HTTPError as e:
         raise HTTPException(status_code=503, detail=f"No se pudo conectar con LLM: {e}")
 
-    # 3. Validación Anti-Duplicados
     filename_base = Path(file.filename).stem
     safe_filename_base = slugify(filename_base) or "documento"
     target_paths = _category_paths(user_folder, main_cat, sub_cat)
@@ -172,18 +164,16 @@ async def process_document(
 
     if potential_path.exists():
         raise HTTPException(
-            status_code=409, # Conflict
+            status_code=409,
             detail=f"El documento '{file.filename}' ya existe en '{main_cat}/{sub_cat}'. No se procesó el duplicado."
         )
 
-    # 4. Guardado de archivos
     try:
         md_path = save_markdown_to_folder(markdown_content, user_folder, filename_base, main_cat, sub_cat)
         pdf_path = save_pdf_to_folder(pdf_bytes, user_folder, file.filename, main_cat, sub_cat)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar en disco: {e}")
 
-    # 5. Creación de Resumen SÍNCRONA
     summary_path = md_path.with_suffix(".summary.json")
     await create_and_save_summary_async(
         markdown_text=markdown_content,
@@ -194,16 +184,12 @@ async def process_document(
     
     if EMBEDDING_MODEL:
         try:
-            # Dividir el markdown en chunks (párrafos) para una búsqueda más granular.
-            # Se filtran chunks muy cortos para evitar ruido.
             text_chunks = [p.strip() for p in markdown_content.split('\n\n') if len(p.strip()) > 30]
             
             if text_chunks:
                 logger.info(f"Generando {len(text_chunks)} vectores para '{file.filename}'...")
-                # Codificar los chunks de texto en vectores numéricos.
                 embeddings = EMBEDDING_MODEL.encode(text_chunks, show_progress_bar=False, convert_to_numpy=True)
                 
-                # Guardar los vectores y los chunks de texto correspondientes en un único archivo comprimido.
                 vector_path = md_path.with_suffix(".npz")
                 np.savez_compressed(vector_path, embeddings=embeddings, chunks=np.array(text_chunks, dtype=object))
                 logger.info(f"Vectores para '{file.filename}' guardados en: {vector_path}")
@@ -211,11 +197,9 @@ async def process_document(
                 logger.warning(f"No se encontraron chunks de texto suficientemente largos para vectorizar en '{file.filename}'.")
 
         except Exception as e:
-            # Capturamos cualquier error durante la vectorización para no detener todo el proceso.
             logger.error(f"Fallo al crear o guardar los vectores para '{file.filename}': {e}")
     else:
         logger.warning("El modelo de embeddings no está cargado. Se omitirá el paso de vectorización.")
-    # --- FIN DE LA MODIFICACIÓN ---
 
     logger.info("Procesado y resumido %s en %.2fs -> %s", file.filename, time.perf_counter() - t0, md_path)
 

@@ -1,5 +1,3 @@
-# llm_service/logic/analysis.py
-
 import logging
 from pathlib import Path
 from typing import List, Dict, Tuple, Iterable
@@ -12,24 +10,16 @@ from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger(__name__)
 
-# ----------------------------- Config -----------------------------
-_MIN_COMBINED_SCORE = 0.30  # umbral para filtrar resultados
-_DEFAULT_ALPHA = 0.5        # peso semántico vs. BM25
+_MIN_COMBINED_SCORE = 0.30
+_DEFAULT_ALPHA = 0.5
 _EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
-# ------------------------------------------------------------------
 
 def _tokenize(text: str) -> List[str]:
-    """
-    Tokenizador sencillo y unicode-friendly:
-    - casefold para mejor manejo de acentos/mayúsculas
-    - separa por grupos alfanuméricos (palabras)
-    """
     if not text:
         return []
     return re.findall(r"\w+", text.casefold(), flags=re.UNICODE)
 
 def _safe_normalize(arr: np.ndarray) -> np.ndarray:
-    """Escala [0, max] a [0,1] de forma segura."""
     if arr.size == 0:
         return arr
     maxv = float(np.max(arr))
@@ -38,11 +28,9 @@ def _safe_normalize(arr: np.ndarray) -> np.ndarray:
     return (arr / maxv).astype(np.float32)
 
 def _safe_semantic_scale(arr: np.ndarray) -> np.ndarray:
-    """Convierte similitud coseno [-1,1] a [0,1] de forma segura."""
     return ((arr + 1.0) * 0.5).astype(np.float32)
 
 def _load_npz(vector_path: Path):
-    """Carga segura de npz con mmap para menor uso de memoria."""
     try:
         data = np.load(vector_path, allow_pickle=True, mmap_mode="r")
         if "chunks" not in data or "embeddings" not in data:
@@ -59,7 +47,6 @@ def _load_npz(vector_path: Path):
         raise
 
 def _l2_normalize(mat: np.ndarray, axis: int = -1, eps: float = 1e-12) -> np.ndarray:
-    """Normaliza por norma L2 evitando divisiones por cero."""
     norms = np.linalg.norm(mat, axis=axis, keepdims=True)
     norms = np.maximum(norms, eps)
     return (mat / norms).astype(np.float32)
@@ -78,15 +65,6 @@ def hybrid_search_in_docs(
     top_k: int = 5,
     alpha: float = _DEFAULT_ALPHA
 ) -> List[Dict]:
-    """
-    Búsqueda HÍBRIDA (semántica + BM25) en documentos.
-    Mantiene el mismo contrato de salida que la versión original:
-    [
-      {"score": float, "document": str, "text": str, "keyword_count": int}, ...
-    ]
-    En caso de error global, conserva el patrón de:
-    [{"error": "..."}]
-    """
     if not EMBEDDING_MODEL:
         return [{"error": "El modelo de embeddings no está disponible."}]
     if not query or not query.strip():
@@ -169,16 +147,6 @@ def hybrid_search_in_docs(
 
 
 def calculate_document_similarity(doc_paths: List[str]) -> Dict:
-    """
-    Calcula la matriz de similitud del coseno entre una lista de documentos.
-    Mantiene la misma estructura de salida actual:
-    {
-        "doc_names": [...],
-        "similarity_matrix": [[...], ...],
-        "errors": [...]
-    }
-    y en caso de fallo total: {"error": "...", "details": [...]}
-    """
     if not EMBEDDING_MODEL:
         return {"error": "El modelo de embeddings no está disponible."}
 

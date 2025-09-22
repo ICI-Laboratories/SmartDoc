@@ -1,5 +1,3 @@
-// api_gateway/src/database.rs
-
 use anyhow::Result;
 use std::{path::Path, time::Duration as StdDuration};
 
@@ -14,7 +12,6 @@ pub async fn init(path: &Path) -> Result<Db> {
 
     let conn = tokio_rusqlite::Connection::open(path).await?;
 
-    // La closure devuelve tokio_rusqlite::Result, y convertimos errores con Into::into
     conn.call(|c: &mut rusqlite::Connection| -> tokio_rusqlite::Result<()> {
         c.pragma_update(None, "journal_mode", "WAL").map_err(tokio_rusqlite::Error::from)?;
         c.pragma_update(None, "synchronous", "NORMAL").map_err(tokio_rusqlite::Error::from)?;
@@ -32,7 +29,7 @@ pub async fn init(path: &Path) -> Result<Db> {
         ).map_err(tokio_rusqlite::Error::from)?;
 
         Ok(())
-    }).await?; // <- un solo `?` (tokio_rusqlite::Result)
+    }).await?;
 
     println!("Base de datos inicializada correctamente en: {}", path.display());
     Ok(conn)
@@ -47,7 +44,7 @@ pub async fn find_or_create_user(db: &Db, username: &str) -> Result<()> {
             [&username],
         ).map_err(tokio_rusqlite::Error::from)?;
         Ok(())
-    }).await?; // <- un solo `?`
+    }).await?;
 
     Ok(())
 }

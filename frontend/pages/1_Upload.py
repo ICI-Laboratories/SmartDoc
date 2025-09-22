@@ -1,4 +1,3 @@
-# frontend/pages/1_Upload.py
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import json
@@ -8,12 +7,8 @@ from typing import Tuple, Union, Dict, Any, List
 import requests
 import streamlit as st
 
-# MODIFICACIÓN 1: Importar get_session_id y ajustar las otras importaciones
 from lib.common import get_http_session, get_session_id, PROCESSOR_URL
 
-# -----------------------------
-# Configuración de la página
-# -----------------------------
 st.title("Cargar y Procesar Documentos")
 
 st.markdown(
@@ -22,19 +17,13 @@ st.markdown(
     """
 )
 
-# -----------------------------
-# Parámetros (puedes ajustarlos)
-# -----------------------------
-MAX_FILE_MB = 50            # Tamaño máximo por archivo
-CONNECT_TIMEOUT = 30         # Timeout de conexión en segundos
-READ_TIMEOUT_PER_FILE = 600  # Timeout de lectura (por archivo) en segundos
-MAX_WORKERS_CAP = 6          # Máximo de hilos concurrentes
-RETRY_ATTEMPTS = 3           # Reintentos ante TIMEOUT/5xx
-RETRY_BACKOFF_BASE = 1.8     # Factor de backoff exponencial
+MAX_FILE_MB = 50
+CONNECT_TIMEOUT = 30
+READ_TIMEOUT_PER_FILE = 600
+MAX_WORKERS_CAP = 6
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_BASE = 1.8
 
-# -----------------------------
-# Formulario de subida
-# -----------------------------
 with st.form("upload_form", clear_on_submit=True):
     uploaded_files = st.file_uploader(
         "Archivos PDF",
@@ -45,9 +34,6 @@ with st.form("upload_form", clear_on_submit=True):
     )
     submit = st.form_submit_button("Iniciar procesamiento", use_container_width=True)
 
-# -----------------------------
-# Utilidades
-# -----------------------------
 def _is_pdf(file) -> bool:
     name_ok = file.name.lower().endswith(".pdf")
     mime = getattr(file, "type", "") or ""
@@ -69,14 +55,9 @@ def _safe_json(resp: requests.Response) -> Dict[str, Any]:
         except Exception:
             return {"detail": resp.text.strip()[:300] or "Respuesta no parseable."}
 
-# MODIFICACIÓN 2: La función ahora acepta y usa el session_id
 def _post_with_retries(file, session_id: str) -> Tuple[str, Union[str, requests.Response, Exception]]:
-    """
-    Sube un archivo con reintentos ante TIMEOUT o 5xx.
-    """
     session = get_http_session()
     files_payload = {"file": (file.name, file.getvalue(), getattr(file, "type", "application/pdf"))}
-    # Usa el ID de sesión del visitante como 'username' para el backend
     data_payload = {"username": session_id}
 
     for attempt in range(1, RETRY_ATTEMPTS + 1):
@@ -109,9 +90,6 @@ def _append_notification(kind: str, message: str) -> None:
         st.session_state.processing_notifications = []
     st.session_state.processing_notifications.append({"type": kind, "message": message})
 
-# -----------------------------
-# Ejecución del envío
-# -----------------------------
 if submit:
     if not uploaded_files:
         st.warning("No seleccionaste archivos. Agrega al menos un PDF.")
@@ -133,7 +111,6 @@ if submit:
         )
         st.stop()
 
-    # MODIFICACIÓN 3: Obtener el ID de sesión único antes de empezar a subir
     current_session_id = get_session_id()
 
     max_workers = min(MAX_WORKERS_CAP, len(files_to_send))
@@ -145,7 +122,6 @@ if submit:
     started = time.time()
     completed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        # MODIFICACIÓN 4: Pasar el ID de sesión a la función de subida
         futures = {ex.submit(_post_with_retries, f, current_session_id): f.name for f in files_to_send}
         for fut in as_completed(futures):
             name, resp_or_err = fut.result()

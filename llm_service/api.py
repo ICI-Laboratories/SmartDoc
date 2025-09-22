@@ -1,11 +1,8 @@
-# llm_service/api.py
-
 import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Tuple
 
-# --- Imports explícitos desde los módulos de lógica ---
 from llm_service.logic.core import (
     classify_text_with_lmstudio,
     summarize_chunk_with_lmstudio,
@@ -16,13 +13,10 @@ from llm_service.logic.docs import (
     get_relevant_pages_from_summary,
     chat_with_multiple_docs,
 )
-# --- INICIO DE LA MODIFICACIÓN ---
 from llm_service.logic.analysis import hybrid_search_in_docs, calculate_document_similarity
-# --- FIN DE LA MODIFICACIÓN ---
 
 logger = logging.getLogger(__name__)
 
-# ------------------------- Modelos de Datos -------------------------
 class ClassifyRequest(BaseModel):
     text: str = Field(..., min_length=1, description="Texto a clasificar")
     categories: Dict
@@ -59,7 +53,6 @@ class SemanticSearchRequest(BaseModel):
             raise ValueError("Cada ruta de documento debe ser una cadena no vacía.")
         return v
 
-# --- INICIO DE LA MODIFICACIÓN: Nuevo Modelo para Similitud ---
 class DocumentSimilarityRequest(BaseModel):
     doc_paths: List[str] = Field(..., min_items=2, description="Al menos dos documentos para comparar")
 
@@ -68,10 +61,7 @@ class DocumentSimilarityRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Cada ruta de documento debe ser una cadena no vacía.")
         return v
-# --- FIN DE LA MODIFICACIÓN ---
 
-
-# ------------------------- Inicialización App -------------------------
 tags_metadata = [
     {"name": "classification", "description": "Clasificación y resúmenes"},
     {"name": "chat", "description": "Chat con contexto y múltiples documentos"},
@@ -80,13 +70,12 @@ tags_metadata = [
 ]
 
 app = FastAPI(
-    title="SmartDoc LLM Service",
-    version="1.2",  # Versión incrementada
+    title="SmartReview LLM Service",
+    version="1.2",
     description="Microservicio para interacciones con el LLM y análisis de documentos.",
     openapi_tags=tags_metadata,
 )
 
-# ------------------------------ Endpoints ------------------------------
 @app.post("/classify", response_model=Dict, summary="Clasifica un fragmento de texto", tags=["classification"])
 def classify_text_ep(request: ClassifyRequest):
     try:
@@ -128,11 +117,6 @@ def chat_with_multiple_docs_ep(request: MultiDocChatRequest):
 
 @app.post("/analyze/semantic_search", response_model=Dict, summary="Búsqueda HÍBRIDA en documentos", tags=["analysis"])
 def semantic_search_ep(request: SemanticSearchRequest):
-    """
-    Busca *chunks* de texto relevantes combinando:
-    - **Semántica** (embeddings) y
-    - **BM25** (palabras clave).
-    """
     try:
         query = request.query.strip()
         if not query:
@@ -143,7 +127,6 @@ def semantic_search_ep(request: SemanticSearchRequest):
             query=query,
             top_k=request.top_k
         )
-        # Si la lógica devuelve un error controlado, lo propagamos como 500 para mantener contrato actual
         if isinstance(results, list) and results and isinstance(results[0], dict) and "error" in results[0]:
             raise HTTPException(status_code=500, detail=results[0]["error"])
 
@@ -154,17 +137,11 @@ def semantic_search_ep(request: SemanticSearchRequest):
         logger.error(f"Error fatal durante la búsqueda híbrida: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
-# --- INICIO DE LA MODIFICACIÓN: Nuevo Endpoint de Similitud ---
 @app.post("/analyze/document_similarity", response_model=Dict, summary="Calcula la similitud entre documentos", tags=["analysis"])
 def document_similarity_ep(request: DocumentSimilarityRequest):
-    """
-    Recibe una lista de rutas de documentos y devuelve una matriz de similitud
-    comparando cada documento con todos los demás.
-    """
     try:
         results = calculate_document_similarity(doc_paths=request.doc_paths)
         if isinstance(results, dict) and "error" in results:
-            # Propagamos como 500 para mantener el patrón de error centralizado
             raise HTTPException(status_code=500, detail=results.get("error", "Error en cálculo de similitud"))
         return results
     except HTTPException:
@@ -172,9 +149,7 @@ def document_similarity_ep(request: DocumentSimilarityRequest):
     except Exception as e:
         logger.error(f"Error fatal durante el cálculo de similitud: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
-# --- FIN DE LA MODIFICACIÓN ---
 
 @app.get("/", summary="Endpoint de estado", tags=["health"])
 def read_root():
-    """Endpoint simple para verificar que el servicio está en funcionamiento."""
     return {"status": "LLM Service is running"}
