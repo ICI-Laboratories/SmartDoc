@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import os
 import asyncio
 import logging
 import time
@@ -42,7 +42,7 @@ except Exception as e:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
 
-    llm_service_url: str = Field(default="http://127.0.0.1:8001")
+    llm_service_url: str = Field(default_factory=lambda: os.getenv("SMARTREVIEW_LLM_SERVICE_URL", "http://127.0.0.1:8044"))
     base_dir: Path = Field(alias="SMARTREVIEW_BASE", default=Path.home() / "SmartReviewData")
     enable_cors: bool = True
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])

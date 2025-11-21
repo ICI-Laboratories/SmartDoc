@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-_INVALID = r"[^A-Za-z0-9._\- ]+"
+_INVALID = r"[^A-Za-z0-9._\- ñÑáéíóúÁÉÍÓÚüÜ]+"
 _MULTI = re.compile(r"\s+")
 
 

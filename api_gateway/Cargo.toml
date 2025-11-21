@@ -17,3 +17,4 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tower-http = { version = "0.5", features = ["trace", "compression-br", "compression-gzip", "compression-deflate"] }
 http = "1"
 anyhow = "1"
+dotenv = "0.15"

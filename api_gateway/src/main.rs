@@ -19,6 +19,8 @@ use std::time::Instant;
 use tokio::net::TcpListener;
 use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 use tracing::{error, info, warn};
+use std::env; // <--- Importar para leer variables de entorno
+use dotenv::dotenv; // <--- Importar para cargar el archivo .env
 
 #[derive(Clone)]
 struct AppState {
@@ -31,11 +33,19 @@ struct AppState {
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok(); // <--- Carga el archivo .env al inicio
     tracing_subscriber::fmt::init();
 
     let db_path = Path::new("smartreview_users.db");
-    let doc_processor_url = "http://127.0.0.1:8002".to_string();
-    let llm_service_url = "http://127.0.0.1:8001".to_string();
+
+    // <--- Lectura dinámica de puertos desde el .env (con valores por defecto de respaldo)
+    let doc_processor_url = env::var("SMARTREVIEW_DOC_PROCESSOR_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8045".to_string()); // Por defecto 8045
+
+    let llm_service_url = env::var("SMARTREVIEW_LLM_SERVICE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8044".to_string()); // Por defecto 8044
+
+    info!("Configurando Gateway -> DocProcessor: {}, LLM: {}", doc_processor_url, llm_service_url);
 
     let http_client = Client::builder()
         .connect_timeout(std::time::Duration::from_secs(5))
@@ -56,6 +66,7 @@ async fn main() {
         llm_service_url,
     };
 
+    // Limpieza de usuarios inactivos
     {
         let active = state.active_users.clone();
         tokio::spawn(async move {
@@ -77,7 +88,8 @@ async fn main() {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8000));
+    // <--- Configurado para escuchar en el puerto 8043
+    let addr = SocketAddr::from(([127, 0, 0, 1], 8043));
     info!("API Gateway escuchando en http://{addr}");
     let listener = TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

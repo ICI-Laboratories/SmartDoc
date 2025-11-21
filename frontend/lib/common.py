@@ -13,8 +13,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import streamlit as st
-
-API_GATEWAY_URL = "http://127.0.0.1:8000"
+# --- Reemplazar estas líneas ---
+API_GATEWAY_URL = os.getenv("SMARTREVIEW_API_GATEWAY_URL", "http://127.0.0.1:8043")
 PROCESSOR_URL = API_GATEWAY_URL
 LLM_URL = API_GATEWAY_URL
 
