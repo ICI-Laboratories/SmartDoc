@@ -52,13 +52,16 @@ def convert_pdf_to_markdown(
         pages_text = [page.get_text() for page in pdf_doc]
         total_text_len = sum(len(text) for text in pages_text)
 
-        if total_text_len > 100:
-            logger.info("PDF con texto nativo detectado. Usando extracción directa (PyMuPDF).")
+        # CORRECCIÓN 1: Umbral aumentado a 1000 para forzar OCR en documentos híbridos
+        if total_text_len > 1000:
+            logger.info("PDF con texto nativo suficiente detectado (>1000 chars). Usando extracción directa (PyMuPDF).")
             md_parts = []
             for i, page_content in enumerate(pages_text):
                 if page_content.strip():
                     md_parts.append(f"--- Página {i + 1} ---\n\n{page_content.strip()}")
             return "\n\n".join(md_parts).strip()
+        else:
+            logger.info(f"PDF con poco texto nativo ({total_text_len} chars). Tratando como imagen/escaneado.")
 
     except Exception as e:
         logger.warning(
@@ -66,7 +69,7 @@ def convert_pdf_to_markdown(
         )
 
     logger.info(
-        "El PDF parece escaneado o no tiene texto extraíble. Recurriendo a OCR con Docling."
+        "El PDF parece escaneado o no tiene texto extraíble suficiente. Recurriendo a OCR con Docling."
     )
     try:
         import os
@@ -81,13 +84,17 @@ def convert_pdf_to_markdown(
         except Exception:
             pass
 
+        # CORRECCIÓN 2: 'lang' agregado al constructor principal de OcrOptions
         ocr_opts = OcrOptions(
+            lang=["es", "en"],
             easy_ocr=EasyOcrOptions(
                 lang=["es", "en"]
             )
         )
 
-        pb_marker = ""
+        # CORRECCIÓN 3: Definir un marcador explícito para evitar 'ValueError: empty separator'
+        pb_marker = "<!-- page-break -->"
+
         pipeline_opts = PdfPipelineOptions(
             artifacts_path=os.getenv("DOCLING_ARTIFACTS_PATH"),
             enable_remote_services=os.getenv("DOCLING_ENABLE_REMOTE", "").lower() in {"1", "true", "yes"},
@@ -121,11 +128,15 @@ def convert_pdf_to_markdown(
         kwargs = {}
         if "image_mode" in params and image_ref_mode is not None:
             kwargs["image_mode"] = image_ref_mode
+        
+        # Pasamos el marcador explícito a Docling
         if "page_break_placeholder" in params:
             kwargs["page_break_placeholder"] = pb_marker
 
         md = export_fn(**kwargs)
-        if pb_marker in md:
+
+        # CORRECCIÓN 4: Verificar que pb_marker no esté vacío antes de hacer split
+        if pb_marker and pb_marker in md:
             parts = [p.strip() for p in md.split(pb_marker)]
             md = "\n\n".join(
                 f"--- Página {i+1} ---\n\n{p}" for i, p in enumerate(parts) if p
