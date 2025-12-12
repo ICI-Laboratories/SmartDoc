@@ -100,7 +100,8 @@ def convert_pdf_to_markdown(
             enable_remote_services=os.getenv("DOCLING_ENABLE_REMOTE", "").lower() in {"1", "true", "yes"},
             do_table_structure=True,
             ocr=ocr_opts,
-            images_dpi=300,
+            images_dpi=600,
+            images_scale=2.0,
         )
 
         mode = (os.getenv("DOCLING_TABLE_MODE") or table_mode).upper()

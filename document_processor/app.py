@@ -32,8 +32,8 @@ if not logger.handlers:
 
 
 try:
-    EMBEDDING_MODEL = SentenceTransformer('BAAI/bge-large-en-v1.5')
-    logger.info("Modelo de SentenceTransformer 'BAAI/bge-large-en-v1.5' cargado correctamente.")
+    _EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
+    logger.info("Modelo de SentenceTransformer 'BAAI/bge-m3' cargado correctamente.")
 except Exception as e:
     logger.error(f"FATAL: No se pudo cargar el modelo de SentenceTransformer: {e}")
     EMBEDDING_MODEL = None
