@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  api_gateway:
+    build:
+      context: .
+      dockerfile: api_gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SMARTREVIEW_DOC_PROCESSOR_URL=http://document_processor:8002
+      - SMARTREVIEW_LLM_SERVICE_URL=http://llm_service:8001
+    volumes:
+      - ./smartdoc_data:/app/data
+    networks:
+      - smartdoc_network
+    depends_on:
+      - document_processor
+      - llm_service
+
+  document_processor:
+    build:
+      context: .
+      dockerfile: document_processor/Dockerfile
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./smartdoc_data:/app/data
+    networks:
+      - smartdoc_network
+
+  llm_service:
+    build:
+      context: .
+      dockerfile: llm_service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      # These should typically come from .env, using defaults here strictly for structure
+      - SMARTREVIEW_LM_URL=${SMARTREVIEW_LM_URL:-http://host.docker.internal:1234/v1/chat/completions}
+      - SMARTREVIEW_MODEL=${SMARTREVIEW_MODEL:-google/gemma-3-4b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - smartdoc_network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - API_GATEWAY_URL=http://api_gateway:8080
+    networks:
+      - smartdoc_network
+    depends_on:
+      - api_gateway
+
+networks:
+  smartdoc_network:
+    driver: bridge
