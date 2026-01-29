@@ -7,10 +7,9 @@ from typing import Tuple, Union, Dict, Any, List
 import requests
 import streamlit as st
 
-from lib.common import get_http_session, get_session_id, PROCESSOR_URL, BASE_DIR
+from lib.common import ensure_session_id, get_http_session, PROCESSOR_URL
 
 st.title("Cargar y Procesar Documentos")
-st.caption(f"Los documentos se guardarán en: `{BASE_DIR}`")
 
 st.markdown(
     """
@@ -24,6 +23,7 @@ READ_TIMEOUT_PER_FILE = 1200
 MAX_WORKERS_CAP = 6
 RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_BASE = 1.8
+SESSION_ID = ensure_session_id()
 
 with st.form("upload_form", clear_on_submit=True):
     uploaded_files = st.file_uploader(
@@ -57,7 +57,7 @@ def _safe_json(resp: requests.Response) -> Dict[str, Any]:
             return {"detail": resp.text.strip()[:300] or "Respuesta no parseable."}
 
 def _post_with_retries(file, session_id: str) -> Tuple[str, Union[str, requests.Response, Exception]]:
-    session = get_http_session()
+    session = get_http_session(session_id)
     files_payload = {"file": (file.name, file.getvalue(), getattr(file, "type", "application/pdf"))}
     data_payload = {"username": session_id}
 
@@ -111,14 +111,14 @@ if submit:
         )
         st.stop()
 
-    current_session_id = get_session_id()
+    current_session_id = SESSION_ID
 
     max_workers = min(MAX_WORKERS_CAP, len(files_to_send))
     progress = st.progress(0.0)
     status_placeholder = st.empty()
     results_table: List[Dict[str, str]] = []
 
-    st.info(f"Enviando {len(files_to_send)} archivo(s) para el usuario '{current_session_id}' con hasta {max_workers} subidas en paralelo.")
+    st.info(f"Enviando {len(files_to_send)} archivo(s) con hasta {max_workers} subidas en paralelo.")
     started = time.time()
     completed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as ex:

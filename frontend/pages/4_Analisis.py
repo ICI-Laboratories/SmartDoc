@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import re
 
 from lib.common import (
+    ensure_session_id,
     get_http_session,
     LLM_URL,
     get_available_summaries,
@@ -58,7 +59,8 @@ def to_percent(x: float) -> float:
     except Exception:
         return 0.0
 
-summary_files_map: Dict[str, str] = get_available_summaries()
+SESSION_ID = ensure_session_id()
+summary_files_map: Dict[str, str] = get_available_summaries(SESSION_ID)
 if not summary_files_map:
     st.warning("No se encontraron documentos procesados para tu sesión. Procesa al menos un documento en la sección de 'Cargar'.")
     st.stop()
@@ -113,7 +115,7 @@ with tab_search:
                         if not doc_paths:
                             st.error("No se encontraron archivos .md válidos para los documentos seleccionados.")
                         else:
-                            session = get_http_session()
+                            session = get_http_session(SESSION_ID)
                             payload = {"doc_paths": doc_paths, "query": query, "top_k": top_k}
                             response = session.post(f"{LLM_URL}/analyze/semantic_search", json=payload, timeout=60)
                             response.raise_for_status()
@@ -245,7 +247,7 @@ with tab_similarity:
                     if len(doc_paths) < 2:
                         st.error("No hay suficientes archivos .md válidos para comparar (se requieren al menos 2).")
                     else:
-                        session = get_http_session()
+                        session = get_http_session(SESSION_ID)
                         payload = {"doc_paths": doc_paths}
                         response = session.post(f"{LLM_URL}/analyze/document_similarity", json=payload, timeout=90)
                         response.raise_for_status()

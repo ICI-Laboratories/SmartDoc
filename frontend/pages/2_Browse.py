@@ -3,6 +3,7 @@ import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
 
 from lib.common import (
+    ensure_session_id,
     get_current_user_folder,
     list_categories,
     list_subcategories,
@@ -20,14 +21,14 @@ with col_refresh:
         st.cache_data.clear()
         st.rerun()
 
-USER_FOLDER = get_current_user_folder()
-st.caption(f"Directorio de datos: `{USER_FOLDER}`")
+SESSION_ID = ensure_session_id()
+USER_FOLDER = get_current_user_folder(SESSION_ID)
 
 if not USER_FOLDER.exists():
     st.info("No has procesado ningún documento todavía. Ve a la sección de 'Cargar' para empezar.")
     st.stop()
 
-categories = list_categories()
+categories = list_categories(SESSION_ID)
 col1, col2 = st.columns(2)
 
 selected_category = col1.selectbox("Categoría", [""] + categories, key="cat_select")

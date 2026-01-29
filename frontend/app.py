@@ -5,7 +5,7 @@ st.set_page_config(
     layout="wide",
 )
 
-from lib.common import get_current_user_folder
+from lib.common import ensure_session_id, get_current_user_folder
 
 if "processing_notifications" not in st.session_state:
     st.session_state.processing_notifications = []
@@ -28,6 +28,7 @@ def sidebar_info():
 
 def main():
     sidebar_info()
+    session_id = ensure_session_id()
 
     st.title("SmartReview: Asistente Inteligente")
     st.markdown(
@@ -69,7 +70,7 @@ def main():
         """
     )
     
-    user_folder = get_current_user_folder()
+    user_folder = get_current_user_folder(session_id)
     if not user_folder.exists():
         st.info("Tu espacio de trabajo está listo. Procesa tu primer documento en la sección de 'Cargar'.")
 

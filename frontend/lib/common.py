@@ -1,11 +1,7 @@
 import os
 import sys
-import getpass
 import json
 from pathlib import Path
-import random
-import string
-import uuid
 
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent.parent / '.env')
@@ -14,6 +10,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 def get_default_data_dir() -> Path:
@@ -50,36 +47,50 @@ else:
 
 # Ensure directory exists
 BASE_DIR.mkdir(parents=True, exist_ok=True)
-SERVER_USERNAME = getpass.getuser()
+# Component that persists a browser-local session id via localStorage.
+_COMPONENT_PATH = Path(__file__).parent / "browser_session_component"
+_browser_session_component = components.declare_component(
+    "browser_session", path=str(_COMPONENT_PATH)
+)
+
+
+def ensure_session_id() -> str:
+    if "session_id" in st.session_state:
+        return st.session_state["session_id"]
+
+    if "session_id" in st.query_params:
+        try:
+            del st.query_params["session_id"]
+        except Exception:
+            pass
+
+    session_id = _browser_session_component(
+        storage_key="smartreview_session_id",
+        prefix="usuario_web_",
+        key="browser_session_id",
+    )
+    if session_id:
+        session_id = str(session_id).strip()
+    if session_id:
+        st.session_state["session_id"] = session_id
+        return session_id
+
+    st.info("Inicializando sesion del navegador...")
+    st.stop()
 
 
 def get_session_id() -> str:
-    if "session_id" in st.query_params:
-        session_id = st.query_params["session_id"]
-        st.session_state['session_id'] = session_id
-        return session_id
-
-    if 'session_id' in st.session_state:
-        st.query_params["session_id"] = st.session_state['session_id']
-        return st.session_state['session_id']
-
-    random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    new_session_id = f"usuario_web_{random_suffix}"
-    
-    st.session_state['session_id'] = new_session_id
-    
-    st.query_params["session_id"] = new_session_id
-    
-    return new_session_id
+    return ensure_session_id()
 
 
-def get_current_user_folder() -> Path:
-    session_user_id = get_session_id()
+def get_current_user_folder(session_user_id: str | None = None) -> Path:
+    if session_user_id is None:
+        session_user_id = get_session_id()
     return BASE_DIR / session_user_id
 
 
 @st.cache_resource
-def get_http_session() -> requests.Session:
+def get_http_session(session_user_id: str) -> requests.Session:
     s = requests.Session()
     retries = Retry(
         total=2,
@@ -91,7 +102,6 @@ def get_http_session() -> requests.Session:
     s.mount("http://", adapter)
     s.mount("https://", adapter)
 
-    session_user_id = get_session_id()
     s.headers.update(
         {
             "Connection": "keep-alive",
@@ -103,8 +113,8 @@ def get_http_session() -> requests.Session:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def get_available_summaries() -> dict:
-    user_folder = get_current_user_folder()
+def get_available_summaries(session_user_id: str) -> dict:
+    user_folder = get_current_user_folder(session_user_id)
     if not user_folder.exists():
         return {}
     summary_files_map: dict[str, str] = {}
@@ -119,8 +129,8 @@ def get_available_summaries() -> dict:
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def list_categories() -> list[str]:
-    user_folder = get_current_user_folder()
+def list_categories(session_user_id: str) -> list[str]:
+    user_folder = get_current_user_folder(session_user_id)
     if not user_folder.exists():
         return []
     return sorted([d.name for d in user_folder.iterdir() if d.is_dir()])

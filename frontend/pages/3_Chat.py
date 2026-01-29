@@ -4,6 +4,7 @@ import requests
 import streamlit as st
 
 from lib.common import (
+    ensure_session_id,
     get_http_session,
     LLM_URL,
     get_current_user_folder,
@@ -42,8 +43,9 @@ def load_summary(path: Path) -> dict:
     mtime_json = path.stat().st_mtime_ns
     return read_json_cached(str(path), mtime_json)
 
-USER_FOLDER = get_current_user_folder()
-summary_files_map: Dict[str, str] = get_available_summaries()
+SESSION_ID = ensure_session_id()
+USER_FOLDER = get_current_user_folder(SESSION_ID)
+summary_files_map: Dict[str, str] = get_available_summaries(SESSION_ID)
 
 by_cat: Dict[str, Dict[str, List[str]]] = {}
 summary_path_by_key: Dict[str, Path] = {}
@@ -130,7 +132,7 @@ if question := st.chat_input("Escribe tu pregunta sobre los documentos seleccion
             summaries = [load_summary(summary_path_by_key[dk]) for dk in st.session_state.selected_docs]
             doc_paths = [str(summary_path_by_key[dk].with_suffix("").with_suffix(".md")) for dk in st.session_state.selected_docs]
             
-            session = get_http_session()
+            session = get_http_session(SESSION_ID)
             payload = {"summaries": summaries, "doc_paths": doc_paths, "question": question}
             response = session.post(f"{LLM_URL}/chat_with_multiple_docs", json=payload, timeout=90)
             response.raise_for_status()
