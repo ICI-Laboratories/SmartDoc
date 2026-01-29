@@ -1,4 +1,5 @@
 import os
+import sys
 import getpass
 import json
 from pathlib import Path
@@ -13,12 +14,42 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import streamlit as st
-# --- Reemplazar estas líneas ---
+
+
+def get_default_data_dir() -> Path:
+    """Get platform-appropriate user data directory for SmartReview."""
+    app_name = "SmartReview"
+
+    if sys.platform == "win32":
+        # Windows: Use LOCALAPPDATA (C:\Users\<user>\AppData\Local\SmartReview)
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        # macOS: Use ~/Library/Application Support/SmartReview
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        # Linux/Unix: Use ~/.local/share/SmartReview
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+    return base / app_name
+
+
 API_GATEWAY_URL = os.getenv("SMARTREVIEW_API_GATEWAY_URL", "http://127.0.0.1:8043")
 PROCESSOR_URL = API_GATEWAY_URL
 LLM_URL = API_GATEWAY_URL
 
-BASE_DIR = Path(os.getenv("SMARTREVIEW_BASE", Path.home() / "SmartReviewData"))
+# Use environment variable or platform-appropriate default
+_env_base = os.getenv("SMARTREVIEW_BASE")
+if _env_base:
+    # If relative path, make it absolute from project root
+    _base_path = Path(_env_base)
+    if not _base_path.is_absolute():
+        _base_path = Path(__file__).parent.parent.parent / _env_base
+    BASE_DIR = _base_path
+else:
+    BASE_DIR = get_default_data_dir()
+
+# Ensure directory exists
+BASE_DIR.mkdir(parents=True, exist_ok=True)
 SERVER_USERNAME = getpass.getuser()
 
 

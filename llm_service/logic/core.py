@@ -1,4 +1,5 @@
 import json
+import re
 import requests
 from pathlib import Path
 from typing import Tuple, List, Dict, Optional
@@ -31,6 +32,51 @@ def get_classification_snippet(text: str) -> str:
     return " ".join(text.split()[:2000])
 
 
+def _extract_json_from_text(text: str) -> Optional[dict]:
+    """Try to extract JSON from text that might have markdown code blocks, thinking tags, or extra text."""
+    if not text:
+        return None
+
+    # Remove thinking tags (gemma3n, qwen, etc.)
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL)
+    text = text.strip()
+
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find JSON in code blocks
+    code_block = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if code_block:
+        try:
+            return json.loads(code_block.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Try to find any JSON object in the text (greedy, finds largest match)
+    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    # Try finding JSON with nested objects more aggressively
+    # Find the first { and last } and try to parse
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end+1])
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
 def call_llm(
     prompt: str,
     schema: Optional[dict] = None,
@@ -44,11 +90,15 @@ def call_llm(
         "max_tokens": max_tokens,
         "stream": False,
     }
+
+    # For Ollama, use the 'format' parameter directly (not response_format)
+    # See: https://docs.ollama.com/capabilities/structured-outputs
     if schema:
-        payload["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {"name": "response", "strict": True, "schema": schema},
-        }
+        # Add schema hint to the prompt for better results
+        schema_hint = f"\n\nResponde SOLO con JSON válido siguiendo este esquema: {json.dumps(schema, ensure_ascii=False)}"
+        payload["messages"][0]["content"] = prompt + schema_hint
+        # Ollama uses 'format' directly with the schema
+        payload["format"] = schema
 
     try:
         response = requests.post(
@@ -63,12 +113,23 @@ def call_llm(
 
     try:
         content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        print(f"\n{'='*60}\nLLM RAW RESPONSE:\n{content}\n{'='*60}\n")
         if schema:
-            return json.loads(content)
+            # Try robust JSON extraction
+            result = _extract_json_from_text(content)
+            if result:
+                print(f"PARSED JSON: {result}")
+                return result
+            print(f"FAILED TO PARSE JSON from: {content[:500]}")
+            return {"error": f"Could not parse JSON from response", "response_text": content[:500]}
         else:
             return {"content": content}
     except (json.JSONDecodeError, IndexError, KeyError) as e:
-        return {"error": f"Invalid response format from LLM: {e}", "response_text": response.text}
+        print(f"LLM RESPONSE ERROR: {e}\nRaw: {response.text[:500]}")
+        return {"error": f"Invalid response format from LLM: {e}", "response_text": response.text[:500]}
+
+import logging
+_logger = logging.getLogger(__name__)
 
 def classify_text_with_lmstudio(text: str, categories_dict: dict) -> Tuple[str, str]:
     snippet = get_classification_snippet(text)
@@ -85,7 +146,13 @@ def classify_text_with_lmstudio(text: str, categories_dict: dict) -> Tuple[str, 
         },
         "required": ["main_category", "sub_category"]
     }
-    result = call_llm(prompt, schema=schema, temperature=0.3)
+    result = call_llm(prompt, schema=schema, temperature=0.1)  # Low temp for consistent classification
+    _logger.info(f"Classification LLM result: {result}")
+
+    # Check for error
+    if "error" in result:
+        _logger.error(f"Classification failed: {result.get('error')}")
+
     main_category = result.get("main_category", "Sin_Clasificar").replace(" ", "_")
     sub_category = result.get("sub_category", "Sin_Subcategoria").replace(" ", "_")
     return main_category, sub_category

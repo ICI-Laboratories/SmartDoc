@@ -6,7 +6,9 @@ from typing import List, Dict
 
 from llm_service.logic.core import call_llm, chat_with_context
 
-CONTEXT_TOKEN_LIMIT = 31000
+# Context limit - configurable via environment for VRAM-constrained setups
+# Default 31000 for full models, use 8000-16000 for smaller models on RTX 3090
+CONTEXT_TOKEN_LIMIT = int(os.environ.get("SMARTREVIEW_CONTEXT_LIMIT", "31000"))
 def _estimate_tokens(text: str) -> int:
     return int(len(text) / 3.5)
 

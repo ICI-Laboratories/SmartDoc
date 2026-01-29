@@ -29,6 +29,7 @@ struct AppState {
     active_users: Arc<DashMap<String, Instant>>,
     doc_processor_url: String,
     llm_service_url: String,
+    max_body_bytes: usize,
 }
 
 #[tokio::main]
@@ -45,11 +46,24 @@ async fn main() {
     let llm_service_url = env::var("SMARTREVIEW_LLM_SERVICE_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:8044".to_string()); // Por defecto 8044
 
-    info!("Configurando Gateway -> DocProcessor: {}, LLM: {}", doc_processor_url, llm_service_url);
+    // Timeout configurable para OCR que puede tomar varios minutos
+    let request_timeout: u64 = env::var("SMARTREVIEW_GATEWAY_TIMEOUT")
+        .unwrap_or_else(|_| "300".to_string())
+        .parse()
+        .unwrap_or(300); // 5 minutos por defecto para OCR
+
+    // Max body size for uploads (100MB default for large PDFs)
+    let max_body_bytes: usize = env::var("SMARTREVIEW_MAX_BODY_BYTES")
+        .unwrap_or_else(|_| "104857600".to_string())
+        .parse()
+        .unwrap_or(100 * 1024 * 1024);
+
+    info!("Configurando Gateway -> DocProcessor: {}, LLM: {}, Timeout: {}s, MaxBody: {}MB",
+          doc_processor_url, llm_service_url, request_timeout, max_body_bytes / 1024 / 1024);
 
     let http_client = Client::builder()
         .connect_timeout(std::time::Duration::from_secs(5))
-        .timeout(std::time::Duration::from_secs(90))
+        .timeout(std::time::Duration::from_secs(request_timeout))
         .pool_idle_timeout(std::time::Duration::from_secs(30))
         .build()
         .expect("no se pudo crear reqwest::Client");
@@ -64,6 +78,7 @@ async fn main() {
         active_users: Arc::new(DashMap::new()),
         doc_processor_url,
         llm_service_url,
+        max_body_bytes,
     };
 
     // Limpieza de usuarios inactivos
@@ -131,11 +146,11 @@ async fn user_validator(
 }
 
 async fn process_document_handler(State(state): State<AppState>, req: Request) -> Response {
-    proxy_handler(state.http_client.clone(), &state.doc_processor_url, req).await
+    proxy_handler(state.http_client.clone(), &state.doc_processor_url, req, state.max_body_bytes).await
 }
 
 async fn llm_handler(State(state): State<AppState>, req: Request) -> Response {
-    proxy_handler(state.http_client.clone(), &state.llm_service_url, req).await
+    proxy_handler(state.http_client.clone(), &state.llm_service_url, req, state.max_body_bytes).await
 }
 
 async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -155,14 +170,14 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
-async fn proxy_handler(client: Client, base_url: &str, req: Request) -> Response {
+async fn proxy_handler(client: Client, base_url: &str, req: Request, max_body_bytes: usize) -> Response {
     let (parts, body) = req.into_parts();
 
     let path = parts.uri.path();
     let query = parts.uri.query().map(|q| format!("?{q}")).unwrap_or_default();
     let target_url = format!("{}{}{}", base_url.trim_end_matches('/'), path, query);
 
-    let body_bytes = match to_bytes(body, 50 * 1024 * 1024).await {
+    let body_bytes = match to_bytes(body, max_body_bytes).await {
         Ok(b) => b,
         Err(e) => {
             warn!("Cuerpo de la petición inválido o demasiado grande: {e}");

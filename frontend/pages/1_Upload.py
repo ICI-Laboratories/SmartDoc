@@ -7,9 +7,10 @@ from typing import Tuple, Union, Dict, Any, List
 import requests
 import streamlit as st
 
-from lib.common import get_http_session, get_session_id, PROCESSOR_URL
+from lib.common import get_http_session, get_session_id, PROCESSOR_URL, BASE_DIR
 
 st.title("Cargar y Procesar Documentos")
+st.caption(f"Los documentos se guardarán en: `{BASE_DIR}`")
 
 st.markdown(
     """
@@ -68,10 +69,9 @@ def _post_with_retries(file, session_id: str) -> Tuple[str, Union[str, requests.
                 data=data_payload,
                 timeout=(CONNECT_TIMEOUT, READ_TIMEOUT_PER_FILE),
             )
-            if 500 <= r.status_code < 600:
-                if attempt < RETRY_ATTEMPTS:
-                    time.sleep(RETRY_BACKOFF_BASE ** attempt)
-                    continue
+            # Don't retry on 500 errors - the document may already be saved
+            # and retrying causes duplicates with different classifications.
+            # Only retry on connection/timeout issues.
             return file.name, r
         except requests.exceptions.Timeout:
             if attempt < RETRY_ATTEMPTS:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import sys
 import asyncio
 import logging
 import time
@@ -13,6 +14,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sentence_transformers import SentenceTransformer
+
+
+def get_default_data_dir() -> Path:
+    """Get platform-appropriate user data directory for SmartReview."""
+    app_name = "SmartReview"
+
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+    return base / app_name
 
 from document_processor.core_pdf import convert_pdf_to_markdown, extract_pages_from_text
 from document_processor.core_io import (
@@ -31,8 +46,9 @@ if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
 
+EMBEDDING_MODEL = None
 try:
-    _EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
+    EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-m3")
     logger.info("Modelo de SentenceTransformer 'BAAI/bge-m3' cargado correctamente.")
 except Exception as e:
     logger.error(f"FATAL: No se pudo cargar el modelo de SentenceTransformer: {e}")
@@ -43,20 +59,24 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
 
     llm_service_url: str = Field(default_factory=lambda: os.getenv("SMARTREVIEW_LLM_SERVICE_URL", "http://127.0.0.1:8044"))
-    base_dir: Path = Field(alias="SMARTREVIEW_BASE", default=Path.home() / "SmartReviewData")
+    base_dir: Path = Field(alias="SMARTREVIEW_BASE", default_factory=get_default_data_dir)
     enable_cors: bool = True
     cors_origins: List[str] = Field(default_factory=lambda: ["*"])
     require_api_key: bool = False
     api_key_header_name: str = "x-api-key"
     api_key_value: Optional[str] = None
-    max_pdf_bytes: int = 30 * 1024 * 1024
+    max_pdf_bytes: int = Field(default=100 * 1024 * 1024, alias="SMARTREVIEW_MAX_PDF_BYTES")  # 100MB default
     classify_snippet_len: int = 4000
-    http_timeout_seconds: float = 20.0
-    max_summary_concurrency: int = 4
+    http_timeout_seconds: float = Field(default=120.0, alias="SMARTREVIEW_HTTP_TIMEOUT")  # 2 min for LLM calls
+    max_summary_concurrency: int = Field(default=4, alias="SMARTREVIEW_SUMMARY_CONCURRENCY")
 
 def get_settings() -> Settings:
     s = Settings()
+    # Handle relative paths - make them absolute from project root
+    if not s.base_dir.is_absolute():
+        s.base_dir = Path(__file__).parent.parent / s.base_dir
     s.base_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Using data directory: {s.base_dir}")
     return s
 
 

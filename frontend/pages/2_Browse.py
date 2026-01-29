@@ -13,7 +13,15 @@ from lib.common import (
 st.title("Explorar y Visualizar Documentos")
 st.markdown("Selecciona una categoría, una subcategoría y un documento para verlo en Markdown o como PDF.")
 
+# Refresh button to clear cache
+col_title, col_refresh = st.columns([4, 1])
+with col_refresh:
+    if st.button("Actualizar", help="Recargar lista de documentos"):
+        st.cache_data.clear()
+        st.rerun()
+
 USER_FOLDER = get_current_user_folder()
+st.caption(f"Directorio de datos: `{USER_FOLDER}`")
 
 if not USER_FOLDER.exists():
     st.info("No has procesado ningún documento todavía. Ve a la sección de 'Cargar' para empezar.")
