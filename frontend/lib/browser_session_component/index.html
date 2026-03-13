@@ -1,9 +1,8 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
     <title>Browser Session</title>
-    <script src="https://unpkg.com/streamlit-component-lib@1.5.0/dist/streamlit-component-lib.js"></script>
   </head>
   <body>
     <script>
@@ -17,9 +16,6 @@
       }
 
       function getStreamlitApi() {
-        if (typeof Streamlit !== "undefined") {
-          return Streamlit;
-        }
         const api = {};
         api.RENDER_EVENT = "streamlit:render";
         api.events = {
@@ -36,10 +32,10 @@
           },
         };
         api.setComponentReady = function () {
-          postMessage("streamlit:componentReady");
+          postMessage("streamlit:componentReady", { apiVersion: 1 });
         };
         api.setComponentValue = function (value) {
-          postMessage("streamlit:setComponentValue", { value: value });
+          postMessage("streamlit:setComponentValue", { value: value, dataType: "json" });
         };
         api.setFrameHeight = function (height) {
           postMessage("streamlit:setFrameHeight", { height: height });

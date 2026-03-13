@@ -1,0 +1,188 @@
+Requirement already satisfied: accelerate==1.10.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 1)) (1.10.0)
+Requirement already satisfied: altair==5.5.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 2)) (5.5.0)
+Requirement already satisfied: annotated-types==0.7.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 3)) (0.7.0)
+Requirement already satisfied: anyio==4.10.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 4)) (4.10.0)
+Requirement already satisfied: attrs==25.3.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 5)) (25.3.0)
+Requirement already satisfied: Authlib==1.3.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 6)) (1.3.2)
+Requirement already satisfied: beautifulsoup4==4.13.4 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 7)) (4.13.4)
+Requirement already satisfied: blinker==1.9.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 8)) (1.9.0)
+Requirement already satisfied: cachetools==5.5.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 9)) (5.5.2)
+Requirement already satisfied: certifi==2025.4.26 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 10)) (2025.4.26)
+Requirement already satisfied: cffi==1.17.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 11)) (1.17.1)
+Requirement already satisfied: charset-normalizer==3.4.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 12)) (3.4.1)
+Requirement already satisfied: click==8.1.8 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 13)) (8.1.8)
+Requirement already satisfied: colorama==0.4.6 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 14)) (0.4.6)
+Requirement already satisfied: cryptography==44.0.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 15)) (44.0.2)
+Requirement already satisfied: dill==0.4.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 16)) (0.4.0)
+Requirement already satisfied: docling==2.44.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 17)) (2.44.0)
+Requirement already satisfied: docling-core==2.44.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 18)) (2.44.1)
+Requirement already satisfied: docling-ibm-models==3.9.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 19)) (3.9.0)
+Requirement already satisfied: docling-parse==4.1.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 20)) (4.1.0)
+Requirement already satisfied: easyocr==1.7.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 21)) (1.7.2)
+Requirement already satisfied: et_xmlfile==2.0.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 22)) (2.0.0)
+Requirement already satisfied: faiss-cpu==1.12.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 23)) (1.12.0)
+Requirement already satisfied: fastapi==0.116.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 24)) (0.116.1)
+Requirement already satisfied: filelock==3.18.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 25)) (3.18.0)
+Requirement already satisfied: filetype==1.2.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 26)) (1.2.0)
+Requirement already satisfied: fsspec==2025.3.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 27)) (2025.3.2)
+Requirement already satisfied: gitdb==4.0.12 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 28)) (4.0.12)
+Requirement already satisfied: GitPython==3.1.44 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 29)) (3.1.44)
+Requirement already satisfied: h11==0.16.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 30)) (0.16.0)
+Requirement already satisfied: httpcore==1.0.9 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 31)) (1.0.9)
+Requirement already satisfied: httpx==0.28.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 32)) (0.28.1)
+Requirement already satisfied: huggingface-hub==0.34.4 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 33)) (0.34.4)
+Requirement already satisfied: idna==3.10 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 34)) (3.10)
+Requirement already satisfied: imageio==2.37.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 35)) (2.37.0)
+Requirement already satisfied: Jinja2==3.1.6 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 36)) (3.1.6)
+Requirement already satisfied: joblib==1.5.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 37)) (1.5.1)
+Requirement already satisfied: jsonlines==3.1.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 38)) (3.1.0)
+Requirement already satisfied: jsonref==1.1.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 39)) (1.1.0)
+Requirement already satisfied: jsonschema==4.23.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 40)) (4.23.0)
+Requirement already satisfied: jsonschema-specifications==2025.4.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 41)) (2025.4.1)
+Requirement already satisfied: latex2mathml==3.78.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 42)) (3.78.0)
+Requirement already satisfied: lazy_loader==0.4 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 43)) (0.4)
+Requirement already satisfied: lxml==5.4.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 44)) (5.4.0)
+Requirement already satisfied: markdown-it-py==4.0.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 45)) (4.0.0)
+Requirement already satisfied: marko==2.2.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 46)) (2.2.0)
+Requirement already satisfied: MarkupSafe==3.0.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 47)) (3.0.2)
+Requirement already satisfied: mdurl==0.1.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 48)) (0.1.2)
+Requirement already satisfied: mpire==2.10.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 49)) (2.10.2)
+Requirement already satisfied: mpmath==1.3.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 50)) (1.3.0)
+Requirement already satisfied: multiprocess==0.70.18 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 51)) (0.70.18)
+Requirement already satisfied: narwhals==1.37.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 52)) (1.37.1)
+Requirement already satisfied: networkx==3.4.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 53)) (3.4.2)
+Requirement already satisfied: ninja==1.11.1.4 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 54)) (1.11.1.4)
+Requirement already satisfied: numpy==2.2.5 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 55)) (2.2.5)
+Requirement already satisfied: opencv-python-headless==4.11.0.86 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 56)) (4.11.0.86)
+Requirement already satisfied: openpyxl==3.1.5 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 57)) (3.1.5)
+Requirement already satisfied: orjson==3.11.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 58)) (3.11.2)
+Requirement already satisfied: packaging==24.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 59)) (24.2)
+Requirement already satisfied: pandas==2.2.3 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 60)) (2.2.3)
+Requirement already satisfied: pillow==10.4.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 61)) (10.4.0)
+Requirement already satisfied: plotly==6.3.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 62)) (6.3.0)
+Requirement already satisfied: pluggy==1.6.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 63)) (1.6.0)
+Collecting protobuf==5.29.3 (from -r requirements.txt (line 64))
+  Using cached protobuf-5.29.3-cp310-abi3-win_amd64.whl.metadata (592 bytes)
+Requirement already satisfied: psutil==7.0.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 65)) (7.0.0)
+Requirement already satisfied: pyarrow==20.0.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 66)) (20.0.0)
+Requirement already satisfied: pyclipper==1.3.0.post6 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 67)) (1.3.0.post6)
+Requirement already satisfied: pycparser==2.22 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 68)) (2.22)
+Requirement already satisfied: pydantic==2.11.7 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 69)) (2.11.7)
+Requirement already satisfied: pydantic-settings==2.10.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 70)) (2.10.1)
+Requirement already satisfied: pydantic_core==2.33.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 71)) (2.33.2)
+Requirement already satisfied: pydeck==0.9.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 72)) (0.9.1)
+Requirement already satisfied: Pygments==2.19.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 73)) (2.19.2)
+Requirement already satisfied: pylatexenc==2.10 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 74)) (2.10)
+Requirement already satisfied: PyMuPDF==1.25.5 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 75)) (1.25.5)
+Requirement already satisfied: pypdfium2==4.30.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 76)) (4.30.0)
+Requirement already satisfied: python-bidi==0.6.6 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 77)) (0.6.6)
+Requirement already satisfied: python-dateutil==2.9.0.post0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 78)) (2.9.0.post0)
+Requirement already satisfied: python-docx==1.2.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 79)) (1.2.0)
+Requirement already satisfied: python-dotenv==1.1.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 80)) (1.1.1)
+Requirement already satisfied: python-multipart==0.0.20 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 81)) (0.0.20)
+Requirement already satisfied: python-pptx==1.0.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 82)) (1.0.2)
+Requirement already satisfied: pytz==2025.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 83)) (2025.2)
+Requirement already satisfied: PyYAML==6.0.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 84)) (6.0.2)
+Requirement already satisfied: rank-bm25==0.2.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 85)) (0.2.2)
+Requirement already satisfied: referencing==0.36.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 86)) (0.36.2)
+Requirement already satisfied: regex==2025.7.34 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 87)) (2025.7.34)
+Requirement already satisfied: requests==2.32.3 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 88)) (2.32.3)
+Requirement already satisfied: rich==13.9.4 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 89)) (13.9.4)
+Requirement already satisfied: rpds-py==0.24.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 90)) (0.24.0)
+Requirement already satisfied: rtree==1.4.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 91)) (1.4.0)
+Requirement already satisfied: safetensors==0.6.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 92)) (0.6.2)
+Requirement already satisfied: scikit-image==0.25.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 93)) (0.25.2)
+Requirement already satisfied: scikit-learn==1.7.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 94)) (1.7.1)
+Requirement already satisfied: scipy==1.15.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 95)) (1.15.2)
+Requirement already satisfied: semchunk==2.2.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 96)) (2.2.2)
+Requirement already satisfied: sentence-transformers==5.1.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 97)) (5.1.0)
+Requirement already satisfied: shapely==2.1.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 98)) (2.1.0)
+Requirement already satisfied: shellingham==1.5.4 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 99)) (1.5.4)
+Requirement already satisfied: six==1.17.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 100)) (1.17.0)
+Requirement already satisfied: smmap==5.0.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 101)) (5.0.2)
+Requirement already satisfied: sniffio==1.3.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 102)) (1.3.1)
+Requirement already satisfied: soupsieve==2.7 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 103)) (2.7)
+Requirement already satisfied: starlette==0.47.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 104)) (0.47.2)
+Collecting streamlit==1.37.0 (from -r requirements.txt (line 105))
+  Using cached streamlit-1.37.0-py2.py3-none-any.whl.metadata (8.5 kB)
+Collecting streamlit-pdf-viewer==0.0.27 (from -r requirements.txt (line 106))
+  Using cached streamlit_pdf_viewer-0.0.27-py3-none-any.whl.metadata (17 kB)
+Collecting sympy==1.14.0 (from -r requirements.txt (line 107))
+  Using cached sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+Requirement already satisfied: tabulate==0.9.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 108)) (0.9.0)
+Collecting tenacity==8.5.0 (from -r requirements.txt (line 109))
+  Using cached tenacity-8.5.0-py3-none-any.whl.metadata (1.2 kB)
+Requirement already satisfied: threadpoolctl==3.6.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 110)) (3.6.0)
+Requirement already satisfied: tifffile==2025.3.30 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 111)) (2025.3.30)
+Requirement already satisfied: tokenizers==0.21.4 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 112)) (0.21.4)
+Requirement already satisfied: toml==0.10.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 113)) (0.10.2)
+Requirement already satisfied: tornado==6.4.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 114)) (6.4.2)
+Requirement already satisfied: tqdm==4.67.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 115)) (4.67.1)
+Requirement already satisfied: transformers==4.55.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 116)) (4.55.0)
+Requirement already satisfied: typer==0.16.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 117)) (0.16.0)
+Requirement already satisfied: typing-inspection==0.4.1 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 118)) (0.4.1)
+Requirement already satisfied: typing_extensions==4.13.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 119)) (4.13.2)
+Requirement already satisfied: tzdata==2025.2 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 120)) (2025.2)
+Requirement already satisfied: urllib3==2.4.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 121)) (2.4.0)
+Requirement already satisfied: uvicorn==0.35.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 122)) (0.35.0)
+Collecting watchdog==4.0.2 (from -r requirements.txt (line 123))
+  Using cached watchdog-4.0.2-py3-none-win_amd64.whl.metadata (38 kB)
+Requirement already satisfied: xlsxwriter==3.2.5 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from -r requirements.txt (line 124)) (3.2.5)
+Requirement already satisfied: torch>=2.0.0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from accelerate==1.10.0->-r requirements.txt (line 1)) (2.6.0+cu124)
+Requirement already satisfied: torchvision<1,>=0 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from docling-ibm-models==3.9.0->-r requirements.txt (line 19)) (0.21.0+cu124)
+Requirement already satisfied: pywin32>=305 in c:\proyectosicilabs\smartdoc\env\lib\site-packages (from docling-parse==4.1.0->-r requirements.txt (line 20)) (311)
+INFO: pip is looking at multiple versions of torch to determine which version is compatible with other requirements. This could take a while.
+Collecting torch>=2.0.0 (from accelerate==1.10.0->-r requirements.txt (line 1))
+  Using cached torch-2.10.0-cp311-cp311-win_amd64.whl.metadata (31 kB)
+Collecting torchvision<1,>=0 (from docling-ibm-models==3.9.0->-r requirements.txt (line 19))
+  Using cached torchvision-0.25.0-cp311-cp311-win_amd64.whl.metadata (5.4 kB)
+Using cached protobuf-5.29.3-cp310-abi3-win_amd64.whl (434 kB)
+Downloading streamlit-1.37.0-py2.py3-none-any.whl (8.7 MB)
+   ---------------------------------------- 8.7/8.7 MB 5.4 MB/s eta 0:00:00
+Downloading streamlit_pdf_viewer-0.0.27-py3-none-any.whl (2.3 MB)
+   ---------------------------------------- 2.3/2.3 MB 6.1 MB/s eta 0:00:00
+Using cached sympy-1.14.0-py3-none-any.whl (6.3 MB)
+Using cached tenacity-8.5.0-py3-none-any.whl (28 kB)
+Using cached watchdog-4.0.2-py3-none-win_amd64.whl (82 kB)
+Using cached torch-2.10.0-cp311-cp311-win_amd64.whl (113.7 MB)
+Using cached torchvision-0.25.0-cp311-cp311-win_amd64.whl (4.0 MB)
+Installing collected packages: watchdog, tenacity, sympy, protobuf, torch, torchvision, streamlit, streamlit-pdf-viewer
+  Attempting uninstall: watchdog
+    Found existing installation: watchdog 5.0.3
+    Uninstalling watchdog-5.0.3:
+      Successfully uninstalled watchdog-5.0.3
+  Attempting uninstall: tenacity
+    Found existing installation: tenacity 9.1.2
+    Uninstalling tenacity-9.1.2:
+      Successfully uninstalled tenacity-9.1.2
+  Attempting uninstall: sympy
+    Found existing installation: sympy 1.13.1
+    Uninstalling sympy-1.13.1:
+      Successfully uninstalled sympy-1.13.1
+  Attempting uninstall: protobuf
+    Found existing installation: protobuf 5.29.6
+    Uninstalling protobuf-5.29.6:
+      Successfully uninstalled protobuf-5.29.6
+  WARNING: Failed to remove contents in a temporary directory 'C:\proyectosicilabs\SmartDoc\env\Lib\site-packages\google\~-pb'.
+  You can safely remove it manually.
+  Attempting uninstall: torch
+    Found existing installation: torch 2.6.0+cu124
+    Uninstalling torch-2.6.0+cu124:
+      Successfully uninstalled torch-2.6.0+cu124
+  WARNING: Failed to remove contents in a temporary directory 'C:\proyectosicilabs\SmartDoc\env\Lib\site-packages\~orch'.
+  You can safely remove it manually.
+  Attempting uninstall: torchvision
+    Found existing installation: torchvision 0.21.0+cu124
+    Uninstalling torchvision-0.21.0+cu124:
+      Successfully uninstalled torchvision-0.21.0+cu124
+  WARNING: Failed to remove contents in a temporary directory 'C:\proyectosicilabs\SmartDoc\env\Lib\site-packages\~orchvision'.
+  You can safely remove it manually.
+  Attempting uninstall: streamlit
+    Found existing installation: streamlit 1.39.0
+    Uninstalling streamlit-1.39.0:
+ERROR: Could not install packages due to an OSError: [WinError 32] El proceso no tiene acceso al archivo porque estß siendo utilizado por otro proceso: 'c:\\proyectosicilabs\\smartdoc\\env\\scripts\\streamlit.exe'
+Check the permissions.
+
+
+[notice] A new release of pip is available: 24.0 -> 26.0.1
+[notice] To update, run: C:\proyectosicilabs\SmartDoc\env\Scripts\python.exe -m pip install --upgrade pip

@@ -1,0 +1,6 @@
+ERROR: Ignored the following yanked versions: 0.0.15
+ERROR: Could not find a version that satisfies the requirement streamlit-pdf-viewer==999.999.999 (from versions: 0.0.1, 0.0.2, 0.0.4, 0.0.5, 0.0.6, 0.0.7, 0.0.8, 0.0.9, 0.0.10, 0.0.11, 0.0.12, 0.0.13, 0.0.14, 0.0.16.dev0, 0.0.16.dev1, 0.0.16, 0.0.17rc2, 0.0.17, 0.0.18.dev0, 0.0.18.dev1, 0.0.18rc0, 0.0.18rc1, 0.0.18rc2, 0.0.18, 0.0.19.dev0, 0.0.19.dev1, 0.0.19.dev2, 0.0.19rc0, 0.0.19, 0.0.20.dev0, 0.0.20rc0, 0.0.20, 0.0.21.dev0, 0.0.21rc0, 0.0.21rc5, 0.0.21, 0.0.22.dev0, 0.0.22rc0, 0.0.22, 0.0.23.dev0, 0.0.23.dev1, 0.0.23rc0, 0.0.23, 0.0.24.dev0, 0.0.24rc0, 0.0.24, 0.0.25, 0.0.26, 0.0.27)
+ERROR: No matching distribution found for streamlit-pdf-viewer==999.999.999
+
+[notice] A new release of pip is available: 24.0 -> 26.0.1
+[notice] To update, run: C:\proyectosicilabs\SmartDoc\env\Scripts\python.exe -m pip install --upgrade pip

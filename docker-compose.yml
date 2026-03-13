@@ -36,8 +36,8 @@ services:
     ports:
       - "8001:8001"
     environment:
-      # These should typically come from .env, using defaults here strictly for structure
-      - SMARTREVIEW_LM_URL=${SMARTREVIEW_LM_URL:-http://host.docker.internal:11434/v1/chat/completions}
+      # Forcing host.docker.internal so the container can reach the host's Ollama, ignoring .env
+      - SMARTREVIEW_LM_URL=http://host.docker.internal:11434/v1/chat/completions
       - SMARTREVIEW_MODEL=${SMARTREVIEW_MODEL:-qwen3:30b-a3b}
       - SMARTREVIEW_LM_TIMEOUT=${SMARTREVIEW_LM_TIMEOUT:-300}
     extra_hosts:
