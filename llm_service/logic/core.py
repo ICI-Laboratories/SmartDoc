@@ -134,7 +134,13 @@ _logger = logging.getLogger(__name__)
 def classify_text_with_lmstudio(text: str, categories_dict: dict) -> Tuple[str, str]:
     snippet = get_classification_snippet(text)
     prompt = (
-        "Clasifica este texto en categorías existentes o nuevas. No uses nombres numéricos ni cortos.\n\n"
+        "Clasifica este texto académico. Tienes dos tareas principales:\n"
+        "1. Identificar el año de publicación o creación del documento en el texto. "
+        "Si el texto menciona o se infiere que es entre 2019 y 2021, la categoría principal DEBE ser 'Pre-IA_2019-2021'. "
+        "Si es entre 2023 y 2025 (o posterior), la categoría principal DEBE ser 'Post-IA_2023-2025'. "
+        "Si es de otros años u otra temática principal, usa tu mejor juicio o crea una temática.\n"
+        "2. Asignar una subcategoría temática específica de qué trata el paper.\n\n"
+        "No uses nombres puramente numéricos ni cortos.\n\n"
         f"Categorías existentes:\n{json.dumps(categories_dict, indent=2)}\n\n"
         f"Texto a clasificar:\n{snippet}"
     )

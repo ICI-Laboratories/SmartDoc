@@ -10,8 +10,8 @@ echo  Optimized for RTX 3090 (24GB VRAM)
 echo ========================================
 echo.
 
-:: Configuration - gemma3n is faster for first token
-set "MODEL=gemma3n:e2b-it-fp16"
+:: Configuration - use the fastest model by default for RTX 4060
+set "MODEL=qwen3-vl:latest"
 set "CONTEXT_SIZE=8192"
 
 :: Check if user wants granite4 instead (smaller but slower first token)
@@ -19,8 +19,12 @@ if "%1"=="granite" (
     set "MODEL=granite4:7b-a1b-h"
     set "CONTEXT_SIZE=16384"
     echo Using granite4 model (4.2GB - more context headroom but slower)
+) else if "%1"=="gemma" (
+    set "MODEL=gemma3n:e2b-it-fp16"
+    set "CONTEXT_SIZE=8192"
+    echo Using gemma3n model (8.9GB - higher reasoning)
 ) else (
-    echo Using gemma3n model (8.9GB - faster inference)
+    echo Using qwen3-vl:latest model (Fastest for batch ingestion)
 )
 echo Model: %MODEL%
 echo Context: %CONTEXT_SIZE% tokens
@@ -131,6 +135,11 @@ pause >nul
 
 start http://localhost:8501
 
+echo.
+echo To process the massive 14,000 PDF dataset, please open a NEW TERMINAL and run:
+echo    cd "C:\proyectosicilabs\SmartDoc"
+echo    call env\Scripts\activate.bat
+echo    python batch_ingest.py
 echo.
 echo To stop all services, close the terminal windows or press Ctrl+C in each.
 echo.
