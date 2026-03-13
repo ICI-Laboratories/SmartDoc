@@ -6,6 +6,9 @@ WORKDIR /app
 COPY api_gateway/Cargo.toml api_gateway/Cargo.lock ./
 COPY api_gateway/src ./src
 
+# Install pkg-config and OpenSSL dev dependencies
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
 # Build
 RUN cargo build --release
 
