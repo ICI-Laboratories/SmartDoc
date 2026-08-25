@@ -53,3 +53,9 @@ api_gateway/target/
 api_gateway/smartreview_users.db
 api_gateway/smartreview_users.db-shm
 api_gateway/smartreview_users.db-wal
+
+.env
+.env.*
+!.env.example
+*.log
+
