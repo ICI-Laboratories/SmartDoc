@@ -6,10 +6,11 @@ import logging
 import time
 from pathlib import Path
 from typing import Optional, List
+from uuid import UUID
 
 import httpx
 import numpy as np
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -88,6 +89,22 @@ async def require_api_key(request: Request, settings: Settings = Depends(get_set
         raise HTTPException(status_code=401, detail="API key inválida o ausente.")
 
 
+def require_central_subject(
+    subject_header: str | None = Header(default=None, alias="X-SmartDoc-Subject"),
+) -> str:
+    """Accept only the canonical auth_services UUID injected by the gateway."""
+    if not subject_header:
+        raise HTTPException(status_code=401, detail="Identidad central requerida.")
+    try:
+        subject = UUID(subject_header)
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=401, detail="Identidad central inválida.") from exc
+    canonical = str(subject)
+    if subject_header.lower() != canonical:
+        raise HTTPException(status_code=401, detail="Identidad central inválida.")
+    return canonical
+
+
 app = FastAPI(title="SmartReview Document Processor", version="1.5")
 _settings = get_settings()
 
@@ -144,8 +161,8 @@ async def create_and_save_summary_async(
     summary="Procesa un único documento PDF de forma síncrona",
 )
 async def process_document(
-    username: str = Form(..., min_length=1, max_length=120),
     file: UploadFile = File(...),
+    central_subject: str = Depends(require_central_subject),
     settings: Settings = Depends(get_settings),
 ):
     t0 = time.perf_counter()
@@ -158,7 +175,7 @@ async def process_document(
     if len(pdf_bytes) > settings.max_pdf_bytes:
         raise HTTPException(status_code=413, detail="Archivo excede el límite.")
 
-    user_folder = settings.base_dir / slugify(username)
+    user_folder = settings.base_dir / central_subject
 
     try:
         markdown_content = convert_pdf_to_markdown(pdf_bytes)

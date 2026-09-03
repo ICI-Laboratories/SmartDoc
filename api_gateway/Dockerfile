@@ -1,19 +1,22 @@
-FROM rust:1.84-slim-bullseye as builder
+FROM rust:1.88-slim-bookworm AS builder
 
 WORKDIR /app
-
-# Copy manifest and source
-COPY api_gateway/Cargo.toml api_gateway/Cargo.lock ./
-COPY api_gateway/src ./src
 
 # Install pkg-config and OpenSSL dev dependencies
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
+# Copy manifest and source
+COPY api_gateway/Cargo.toml ./
+COPY api_gateway/src ./src
+
 # Build
 RUN cargo build --release
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy binary
 COPY --from=builder /app/target/release/api_gateway .

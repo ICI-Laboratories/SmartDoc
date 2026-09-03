@@ -112,12 +112,8 @@ pause >nul
 start http://localhost:8501
 
 echo.
-echo To process the massive PDF dataset, please open a NEW TERMINAL and run:
-echo    cd "C:\proyectosicilabs\SmartDoc"
-echo    call env\Scripts\activate.bat
-echo    python batch_ingest.py
-echo.
-echo (Or point batch_ingest.py to http://127.0.0.1:8002/process_document/)
+echo Batch ingestion is disabled until auth_services provides workload identity.
+echo See docs\AUTH_CUTOVER.md.
 echo.
 echo To stop the Docker containers, run: docker-compose down
 echo.

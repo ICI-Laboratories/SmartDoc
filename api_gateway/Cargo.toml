@@ -7,14 +7,17 @@ edition = "2021"
 axum = "0.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
 reqwest = { version = "0.11", features = ["json", "stream", "gzip", "brotli", "deflate"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
-tokio-rusqlite = "0.5"
 dashmap = "5.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-tower-http = { version = "0.5", features = ["trace", "compression-br", "compression-gzip", "compression-deflate"] }
+tower-http = { version = "0.5", features = ["compression-br", "compression-gzip", "compression-deflate", "cors"] }
 http = "1"
 anyhow = "1"
 dotenv = "0.15"
+base64 = "0.22"
+rand = "0.8"
+sha2 = "0.10"
+url = "2"
+uuid = "1"

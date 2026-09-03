@@ -7,7 +7,12 @@ from typing import Tuple, Union, Dict, Any, List
 import requests
 import streamlit as st
 
-from lib.common import ensure_session_id, get_http_session, PROCESSOR_URL
+from lib.common import (
+    ensure_session_id,
+    get_gateway_auth_context,
+    get_http_session,
+    PROCESSOR_URL,
+)
 
 st.title("Cargar y Procesar Documentos")
 
@@ -24,6 +29,7 @@ MAX_WORKERS_CAP = 6
 RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_BASE = 1.8
 SESSION_ID = ensure_session_id()
+AUTH_CONTEXT = get_gateway_auth_context()
 
 with st.form("upload_form", clear_on_submit=True):
     uploaded_files = st.file_uploader(
@@ -56,17 +62,18 @@ def _safe_json(resp: requests.Response) -> Dict[str, Any]:
         except Exception:
             return {"detail": resp.text.strip()[:300] or "Respuesta no parseable."}
 
-def _post_with_retries(file, session_id: str) -> Tuple[str, Union[str, requests.Response, Exception]]:
-    session = get_http_session(session_id)
+def _post_with_retries(
+    file,
+    session_id: str,
+    auth_context: tuple[str, str],
+) -> Tuple[str, Union[str, requests.Response, Exception]]:
+    session = get_http_session(session_id, auth_context)
     files_payload = {"file": (file.name, file.getvalue(), getattr(file, "type", "application/pdf"))}
-    data_payload = {"username": session_id}
-
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
             r = session.post(
                 f"{PROCESSOR_URL}/process_document/",
                 files=files_payload,
-                data=data_payload,
                 timeout=(CONNECT_TIMEOUT, READ_TIMEOUT_PER_FILE),
             )
             # Don't retry on 500 errors - the document may already be saved
@@ -122,7 +129,10 @@ if submit:
     started = time.time()
     completed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = {ex.submit(_post_with_retries, f, current_session_id): f.name for f in files_to_send}
+        futures = {
+            ex.submit(_post_with_retries, f, current_session_id, AUTH_CONTEXT): f.name
+            for f in files_to_send
+        }
         for fut in as_completed(futures):
             name, resp_or_err = fut.result()
             data = {}

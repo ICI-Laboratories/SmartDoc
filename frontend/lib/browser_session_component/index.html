@@ -2,100 +2,59 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Browser Session</title>
+    <title>SmartDoc central session</title>
   </head>
   <body>
+    <div id="status" role="status"></div>
     <script>
-      const DEFAULT_STORAGE_KEY = "smartreview_session_id";
-      const DEFAULT_PREFIX = "usuario_web_";
-      let memoryId = null;
-
       function postMessage(type, payload) {
         const message = Object.assign({ isStreamlitMessage: true, type: type }, payload || {});
         window.parent.postMessage(message, "*");
       }
 
-      function getStreamlitApi() {
-        const api = {};
-        api.RENDER_EVENT = "streamlit:render";
-        api.events = {
-          addEventListener: function (type, handler) {
-            if (type !== api.RENDER_EVENT) {
-              return;
-            }
-            window.addEventListener("message", function (event) {
-              const data = event && event.data ? event.data : {};
-              if (data.type === api.RENDER_EVENT) {
-                handler({ detail: data });
-              }
-            });
-          },
-        };
-        api.setComponentReady = function () {
-          postMessage("streamlit:componentReady", { apiVersion: 1 });
-        };
-        api.setComponentValue = function (value) {
-          postMessage("streamlit:setComponentValue", { value: value, dataType: "json" });
-        };
-        api.setFrameHeight = function (height) {
-          postMessage("streamlit:setFrameHeight", { height: height });
-        };
-        return api;
+      function setValue(value) {
+        postMessage("streamlit:setComponentValue", { value: value, dataType: "json" });
       }
 
-      function randomSuffix(length) {
-        const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-        let out = "";
-        const cryptoObj = window.crypto || window.msCrypto;
-        if (cryptoObj && cryptoObj.getRandomValues) {
-          const bytes = new Uint8Array(length);
-          cryptoObj.getRandomValues(bytes);
-          for (let i = 0; i < length; i += 1) {
-            out += chars[bytes[i] % chars.length];
-          }
-          return out;
-        }
-        for (let i = 0; i < length; i += 1) {
-          out += chars[Math.floor(Math.random() * chars.length)];
-        }
-        return out;
+      function setHeight(height) {
+        postMessage("streamlit:setFrameHeight", { height: height });
       }
 
-      function generateId(prefix) {
-        return prefix + randomSuffix(10);
-      }
-
-      function getOrCreate(storageKey, prefix) {
-        if (memoryId) {
-          return memoryId;
+      let requestStarted = false;
+      async function onRender(event) {
+        const data = event && event.data ? event.data : {};
+        if (data.type !== "streamlit:render" || requestStarted) {
+          return;
         }
+        const args = data.args || {};
+        if (args.action !== "logout") {
+          setHeight(0);
+          return;
+        }
+
+        requestStarted = true;
+        document.getElementById("status").textContent = "Cerrando sesion...";
+        setHeight(28);
         try {
-          const existing = window.localStorage.getItem(storageKey);
-          if (existing) {
-            return existing;
+          const response = await fetch(args.gateway_url.replace(/\/$/, "") + "/auth/logout", {
+            method: "POST",
+            credentials: "include",
+            headers: { "X-CSRF-Token": args.csrf_token },
+            cache: "no-store"
+          });
+          if (!response.ok && response.status !== 204) {
+            throw new Error("logout rejected");
           }
-          const created = generateId(prefix);
-          window.localStorage.setItem(storageKey, created);
-          return created;
-        } catch (err) {
-          memoryId = generateId(prefix);
-          return memoryId;
+          setValue({ status: "ok" });
+          window.top.location.replace(args.frontend_url);
+        } catch (_error) {
+          document.getElementById("status").textContent = "No se pudo cerrar la sesion.";
+          setValue({ status: "error" });
         }
       }
 
-      function onRender(event) {
-        const args = (event && event.detail && event.detail.args) ? event.detail.args : {};
-        const storageKey = args.storage_key || DEFAULT_STORAGE_KEY;
-        const prefix = args.prefix || DEFAULT_PREFIX;
-        const value = getOrCreate(storageKey, prefix);
-        StreamlitApi.setComponentValue(value);
-        StreamlitApi.setFrameHeight(0);
-      }
-
-      const StreamlitApi = getStreamlitApi();
-      const renderEvent = StreamlitApi.RENDER_EVENT || "streamlit:render";
-      StreamlitApi.events.addEventListener(renderEvent, onRender);
-      StreamlitApi.setComponentReady();
+      window.addEventListener("message", onRender);
+      postMessage("streamlit:componentReady", { apiVersion: 1 });
     </script>
   </body>
 </html>

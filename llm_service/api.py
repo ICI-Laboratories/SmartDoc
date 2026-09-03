@@ -1,5 +1,8 @@
 import logging
-from fastapi import FastAPI, HTTPException
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Tuple
 
@@ -14,8 +17,28 @@ from llm_service.logic.docs import (
     chat_with_multiple_docs,
 )
 from llm_service.logic.analysis import hybrid_search_in_docs, calculate_document_similarity
+from llm_service.path_scope import SubjectScopeError, paths_for_subject
 
 logger = logging.getLogger(__name__)
+
+
+def _base_dir() -> Path:
+    configured = Path(os.getenv("SMARTREVIEW_BASE", "smartdoc_data"))
+    if not configured.is_absolute():
+        configured = Path(__file__).parent.parent / configured
+    return configured.resolve()
+
+
+def _subject_paths(paths: List[str], subject_header: str | None) -> List[str]:
+    if not subject_header:
+        raise HTTPException(status_code=401, detail="Identidad central requerida.")
+    try:
+        return paths_for_subject(_base_dir(), subject_header, paths)
+    except SubjectScopeError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="La ruta no pertenece al espacio de la identidad central.",
+        ) from exc
 
 class ClassifyRequest(BaseModel):
     text: str = Field(..., min_length=1, description="Texto a clasificar")
@@ -111,19 +134,26 @@ def get_relevant_pages_ep(request: RelevantPagesRequest):
     return result
 
 @app.post("/chat_with_multiple_docs", response_model=Dict, summary="Orquesta un chat con múltiples documentos", tags=["chat"])
-def chat_with_multiple_docs_ep(request: MultiDocChatRequest):
-    answer = chat_with_multiple_docs(request.summaries, request.doc_paths, request.question)
+def chat_with_multiple_docs_ep(
+    request: MultiDocChatRequest,
+    subject_header: str | None = Header(default=None, alias="X-SmartDoc-Subject"),
+):
+    safe_paths = _subject_paths(request.doc_paths, subject_header)
+    answer = chat_with_multiple_docs(request.summaries, safe_paths, request.question)
     return {"answer": answer}
 
 @app.post("/analyze/semantic_search", response_model=Dict, summary="Búsqueda HÍBRIDA en documentos", tags=["analysis"])
-def semantic_search_ep(request: SemanticSearchRequest):
+def semantic_search_ep(
+    request: SemanticSearchRequest,
+    subject_header: str | None = Header(default=None, alias="X-SmartDoc-Subject"),
+):
     try:
         query = request.query.strip()
         if not query:
             raise HTTPException(status_code=422, detail="La consulta de búsqueda no puede estar vacía.")
 
         results = hybrid_search_in_docs(
-            doc_paths=request.doc_paths,
+            doc_paths=_subject_paths(request.doc_paths, subject_header),
             query=query,
             top_k=request.top_k
         )
@@ -138,9 +168,14 @@ def semantic_search_ep(request: SemanticSearchRequest):
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
 @app.post("/analyze/document_similarity", response_model=Dict, summary="Calcula la similitud entre documentos", tags=["analysis"])
-def document_similarity_ep(request: DocumentSimilarityRequest):
+def document_similarity_ep(
+    request: DocumentSimilarityRequest,
+    subject_header: str | None = Header(default=None, alias="X-SmartDoc-Subject"),
+):
     try:
-        results = calculate_document_similarity(doc_paths=request.doc_paths)
+        results = calculate_document_similarity(
+            doc_paths=_subject_paths(request.doc_paths, subject_header)
+        )
         if isinstance(results, dict) and "error" in results:
             raise HTTPException(status_code=500, detail=results.get("error", "Error en cálculo de similitud"))
         return results

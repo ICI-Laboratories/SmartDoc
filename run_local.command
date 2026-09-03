@@ -58,12 +58,12 @@ cd ..
 
 # Start LLM Service
 echo "Starting LLM Service..."
-uvicorn llm_service.api:app --host 127.0.0.1 --port 8001 &
+uvicorn llm_service.api:app --host 127.0.0.1 --port 8044 &
 LLM_PID=$!
 
 # Start Document Processor
 echo "Starting Document Processor..."
-uvicorn document_processor.app:app --host 127.0.0.1 --port 8002 &
+uvicorn document_processor.app:app --host 127.0.0.1 --port 8045 &
 DOCPROC_PID=$!
 
 # Start Frontend

@@ -123,7 +123,7 @@ echo Services:
 echo   - API Gateway:        http://localhost:8043
 echo   - LLM Service:        http://localhost:8044
 echo   - Document Processor: http://localhost:8045
-echo   - Frontend:           http://localhost:8501
+echo   - Frontend:           http://127.0.0.1:8501
 echo.
 echo Ollama:
 echo   - Model: %MODEL%
@@ -133,13 +133,11 @@ echo.
 echo Press any key to open the frontend in browser...
 pause >nul
 
-start http://localhost:8501
+start http://127.0.0.1:8501
 
 echo.
-echo To process the massive 14,000 PDF dataset, please open a NEW TERMINAL and run:
-echo    cd "C:\proyectosicilabs\SmartDoc"
-echo    call env\Scripts\activate.bat
-echo    python batch_ingest.py
+echo Batch ingestion is disabled until auth_services provides workload identity.
+echo See docs\AUTH_CUTOVER.md.
 echo.
 echo To stop all services, close the terminal windows or press Ctrl+C in each.
 echo.
