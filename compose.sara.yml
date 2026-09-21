@@ -1,0 +1,96 @@
+name: sara-docreader
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: sara
+      POSTGRES_USER: sara
+      POSTGRES_PASSWORD: ${SARA_DB_PASSWORD:?Define SARA_DB_PASSWORD}
+    volumes:
+      - catalog:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U sara -d sara"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+  migrate:
+    build:
+      context: .
+      dockerfile: library_service/Dockerfile
+    environment:
+      SARA_DATABASE_URL: postgresql://sara:${SARA_DB_PASSWORD}@db:5432/sara
+    command: [python, -m, library_service.migrate]
+    depends_on:
+      db:
+        condition: service_healthy
+  library:
+    build:
+      context: .
+      dockerfile: library_service/Dockerfile
+    environment: &library-env
+      SARA_DATABASE_URL: postgresql://sara:${SARA_DB_PASSWORD}@db:5432/sara
+      SARA_STORAGE: /data
+      SARA_EPHEMERAL_HOURS: ${SARA_EPHEMERAL_HOURS:-24}
+      SARA_ANALYTICS_ENABLED: ${SARA_ANALYTICS_ENABLED:-true}
+      SARA_ANALYTICS_RETENTION_DAYS: ${SARA_ANALYTICS_RETENTION_DAYS:-90}
+      SARA_OLLAMA_URL: ${SARA_OLLAMA_URL:-http://host.docker.internal:11434}
+      SARA_EMBEDDING_MODEL: ${SARA_EMBEDDING_MODEL:-}
+      SARA_LLM_URL: ${SARA_LLM_URL:-}
+      SARA_LLM_MODEL: ${SARA_LLM_MODEL:-}
+    volumes:
+      - documents:/data
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  worker:
+    build:
+      context: .
+      dockerfile: library_service/Dockerfile
+    command: [python, -m, library_service.worker]
+    environment: *library-env
+    volumes:
+      - documents:/data
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  api_gateway:
+    build:
+      context: .
+      dockerfile: api_gateway/Dockerfile
+    environment:
+      SMARTDOC_GATEWAY_LISTEN: 0.0.0.0:8080
+      SARA_ANONYMOUS: "true"
+      SARA_LOGIN_ENABLED: ${SARA_LOGIN_ENABLED:-false}
+      SARA_EPHEMERAL_HOURS: ${SARA_EPHEMERAL_HOURS:-24}
+      SMARTDOC_AUTH_PORTAL_URL: ${SMARTDOC_AUTH_PORTAL_URL:-http://localhost:3000}
+      SMARTDOC_IDENTITY_URL: ${SMARTDOC_IDENTITY_URL:-http://host.docker.internal:8001}
+      SMARTDOC_AUTH_CALLBACK_URL: ${SARA_PUBLIC_ORIGIN:-http://127.0.0.1:8043}/auth/callback
+      SMARTDOC_FRONTEND_URL: ${SARA_PUBLIC_ORIGIN:-http://127.0.0.1:8043}/
+      SMARTDOC_COOKIE_SECURE: ${SMARTDOC_COOKIE_SECURE:-false}
+      SMARTREVIEW_MAX_BODY_BYTES: 105906176
+      SARA_LIBRARY_URL: http://library:8003
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: [library]
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      ORIGIN: ${SARA_PUBLIC_ORIGIN:-http://127.0.0.1:8043}
+    restart: unless-stopped
+  proxy:
+    image: caddy:2-alpine
+    ports: ["127.0.0.1:${SARA_PORT:-8043}:80"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on: [web, api_gateway]
+    restart: unless-stopped
+volumes:
+  catalog:
+  documents:

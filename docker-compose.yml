@@ -6,6 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      SARA_ANONYMOUS: "false"
       SMARTDOC_GATEWAY_LISTEN: 0.0.0.0:8080
       SMARTDOC_AUTH_PORTAL_URL: http://localhost:3000
       SMARTDOC_IDENTITY_URL: http://host.docker.internal:8001

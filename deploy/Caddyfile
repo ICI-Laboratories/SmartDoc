@@ -1,0 +1,14 @@
+:80 {
+    request_body {
+        max_size 101MB
+    }
+    @api path /api/* /auth/* /session/* /health
+    handle @api {
+        reverse_proxy api_gateway:8080 {
+            flush_interval -1
+        }
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}

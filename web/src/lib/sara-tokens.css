@@ -1,0 +1,422 @@
+/* SARA · Identidad Unificada · v0.4.0
+ * Tokens de diseño, códigos de color (HEX + RGB) y componentes estándar.
+ * Sistema cromático: Ciruela desaturado con superficies neutras editoriales.
+ * Soporte: Modo claro y modo oscuro (automático por sistema y manual vía [data-sara-theme="light"|"dark"]).
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ==========================================================================
+     Tipografía y Jerarquía
+     ========================================================================== */
+  --sara-font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sara-font-title: "Manrope", "Inter", system-ui, sans-serif;
+  --sara-font-code:
+    "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --sara-weight-ui-regular: 400;
+  --sara-weight-ui-medium: 500;
+  --sara-weight-ui-semibold: 600;
+  --sara-weight-title-semibold: 600;
+  --sara-weight-title-bold: 700;
+  --sara-weight-code-regular: 400;
+  --sara-weight-code-medium: 500;
+
+  --sara-text-body-size: 1rem;
+  --sara-text-body-line-height: 1.5rem;
+  --sara-text-body-weight: 400;
+  --sara-text-body-family: var(--sara-font-ui);
+
+  --sara-text-meta-size: 0.875rem;
+  --sara-text-meta-line-height: 1.25rem;
+  --sara-text-meta-weight: 400;
+  --sara-text-meta-family: var(--sara-font-ui);
+
+  --sara-text-h1-size: 2rem;
+  --sara-text-h1-line-height: 2.5rem;
+  --sara-text-h1-weight: 600;
+  --sara-text-h1-family: var(--sara-font-title);
+
+  --sara-text-h2-size: 1.5rem;
+  --sara-text-h2-line-height: 2rem;
+  --sara-text-h2-weight: 600;
+  --sara-text-h2-family: var(--sara-font-title);
+
+  --sara-text-code-size: 0.875rem;
+  --sara-text-code-line-height: 1.375rem;
+  --sara-text-code-weight: 400;
+  --sara-text-code-family: var(--sara-font-code);
+
+  /* ==========================================================================
+     Espaciado, Radios y Métricas
+     ========================================================================== */
+  --sara-space-1: 4px;
+  --sara-space-2: 8px;
+  --sara-space-3: 12px;
+  --sara-space-4: 16px;
+  --sara-space-6: 24px;
+  --sara-space-8: 32px;
+  --sara-space-12: 48px;
+
+  --sara-radius-control: 8px;
+  --sara-radius-card: 12px;
+  --sara-radius-dialog: 16px;
+  --sara-size-control-min: 44px;
+
+  --sara-focus-width: 3px;
+  --sara-focus-offset: 2px;
+  --sara-disabled-cursor: not-allowed;
+
+  /* ==========================================================================
+     Colores Modo Claro (HEX)
+     ========================================================================== */
+  --sara-background: #f7f5f2;
+  --sara-surface: #ffffff;
+  --sara-surface-subtle: #eeeaef;
+  --sara-text: #251f29;
+  --sara-text-secondary: #6c636f;
+  --sara-border: #ded8e2;
+  --sara-border-control: #8c8292;
+
+  /* Marca y Acciones: Ciruela desaturado */
+  --sara-action: #6b4f73;
+  --sara-action-hover: #5b4263;
+  --sara-action-active: #4c3654;
+  --sara-on-action: #ffffff;
+  --sara-action-soft: #eee8f1;
+
+  --sara-focus: #6b4f73;
+  --sara-focus-gap: #ffffff;
+
+  /* Estados Semánticos Funcionales */
+  --sara-success: #24724a;
+  --sara-success-soft: #dff3e7;
+  --sara-warning: #8a5800;
+  --sara-warning-soft: #fff3db;
+  --sara-error: #ba1a1a;
+  --sara-error-soft: #fdecec;
+  --sara-info: #5b4f60;
+  --sara-info-soft: #eeeaef;
+  --sara-info-border: #8c8292;
+
+  /* Estado Deshabilitado */
+  --sara-disabled-background: #e8e4ea;
+  --sara-disabled-text: #8c8292;
+  --sara-disabled-border: #d0c8d4;
+
+  /* ==========================================================================
+     Canales RGB Modo Claro
+     ========================================================================== */
+  --sara-rgb-background: 247, 245, 242;
+  --sara-rgb-surface: 255, 255, 255;
+  --sara-rgb-surface-subtle: 238, 234, 239;
+  --sara-rgb-text: 37, 31, 41;
+  --sara-rgb-text-secondary: 108, 99, 111;
+  --sara-rgb-border: 222, 216, 226;
+  --sara-rgb-border-control: 140, 130, 146;
+  --sara-rgb-action: 107, 79, 115;
+  --sara-rgb-action-hover: 91, 66, 99;
+  --sara-rgb-action-active: 76, 54, 84;
+  --sara-rgb-on-action: 255, 255, 255;
+  --sara-rgb-action-soft: 238, 232, 241;
+  --sara-rgb-success: 36, 114, 74;
+  --sara-rgb-warning: 138, 88, 0;
+  --sara-rgb-error: 186, 26, 26;
+  --sara-rgb-info: 91, 79, 96;
+}
+
+/* ==========================================================================
+   Modo Oscuro (automático por sistema)
+   ========================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-sara-theme="light"]):not([data-sara-theme="dark"]) {
+    color-scheme: dark;
+
+    --sara-background: #151217;
+    --sara-surface: #1e1a22;
+    --sara-surface-subtle: #28232c;
+    --sara-text: #f3eef5;
+    --sara-text-secondary: #beb4c4;
+    --sara-border: #3d3544;
+    --sara-border-control: #807488;
+
+    --sara-action: #c5aed0;
+    --sara-action-hover: #d3bfdc;
+    --sara-action-active: #b69cc3;
+    --sara-on-action: #231b28;
+    --sara-action-soft: #302635;
+
+    --sara-focus: #c5aed0;
+    --sara-focus-gap: #1e1a22;
+
+    --sara-success: #81c995;
+    --sara-success-soft: #173b2c;
+    --sara-warning: #ffd28a;
+    --sara-warning-soft: #3d2f14;
+    --sara-error: #ffa6a0;
+    --sara-error-soft: #49292d;
+    --sara-info: #beb4c4;
+    --sara-info-soft: #28232c;
+    --sara-info-border: #807488;
+
+    --sara-disabled-background: #231f27;
+    --sara-disabled-text: #73697a;
+    --sara-disabled-border: #3d3544;
+
+    /* Canales RGB Modo Oscuro */
+    --sara-rgb-background: 21, 18, 23;
+    --sara-rgb-surface: 30, 26, 34;
+    --sara-rgb-surface-subtle: 40, 35, 44;
+    --sara-rgb-text: 243, 238, 245;
+    --sara-rgb-text-secondary: 190, 180, 196;
+    --sara-rgb-border: 61, 53, 68;
+    --sara-rgb-border-control: 128, 116, 136;
+    --sara-rgb-action: 197, 174, 208;
+    --sara-rgb-action-hover: 211, 191, 220;
+    --sara-rgb-action-active: 182, 156, 195;
+    --sara-rgb-on-action: 35, 27, 40;
+    --sara-rgb-action-soft: 48, 38, 53;
+    --sara-rgb-success: 129, 201, 149;
+    --sara-rgb-warning: 255, 210, 138;
+    --sara-rgb-error: 255, 166, 160;
+    --sara-rgb-info: 190, 180, 196;
+  }
+}
+
+/* ==========================================================================
+   Modo Claro Forzado ([data-sara-theme="light"])
+   ========================================================================== */
+:root[data-sara-theme="light"],
+[data-sara-theme="light"] {
+  color-scheme: light;
+
+  --sara-background: #f7f5f2;
+  --sara-surface: #ffffff;
+  --sara-surface-subtle: #eeeaef;
+  --sara-text: #251f29;
+  --sara-text-secondary: #6c636f;
+  --sara-border: #ded8e2;
+  --sara-border-control: #8c8292;
+
+  --sara-action: #6b4f73;
+  --sara-action-hover: #5b4263;
+  --sara-action-active: #4c3654;
+  --sara-on-action: #ffffff;
+  --sara-action-soft: #eee8f1;
+
+  --sara-focus: #6b4f73;
+  --sara-focus-gap: #ffffff;
+
+  --sara-success: #24724a;
+  --sara-success-soft: #dff3e7;
+  --sara-warning: #8a5800;
+  --sara-warning-soft: #fff3db;
+  --sara-error: #ba1a1a;
+  --sara-error-soft: #fdecec;
+  --sara-info: #5b4f60;
+  --sara-info-soft: #eeeaef;
+  --sara-info-border: #8c8292;
+
+  --sara-disabled-background: #e8e4ea;
+  --sara-disabled-text: #8c8292;
+  --sara-disabled-border: #d0c8d4;
+
+  --sara-rgb-background: 247, 245, 242;
+  --sara-rgb-surface: 255, 255, 255;
+  --sara-rgb-surface-subtle: 238, 234, 239;
+  --sara-rgb-text: 37, 31, 41;
+  --sara-rgb-text-secondary: 108, 99, 111;
+  --sara-rgb-border: 222, 216, 226;
+  --sara-rgb-border-control: 140, 130, 146;
+  --sara-rgb-action: 107, 79, 115;
+  --sara-rgb-action-hover: 91, 66, 99;
+  --sara-rgb-action-active: 76, 54, 84;
+  --sara-rgb-on-action: 255, 255, 255;
+  --sara-rgb-action-soft: 238, 232, 241;
+  --sara-rgb-success: 36, 114, 74;
+  --sara-rgb-warning: 138, 88, 0;
+  --sara-rgb-error: 186, 26, 26;
+  --sara-rgb-info: 91, 79, 96;
+}
+
+/* ==========================================================================
+   Modo Oscuro Forzado ([data-sara-theme="dark"])
+   ========================================================================== */
+:root[data-sara-theme="dark"],
+[data-sara-theme="dark"] {
+  color-scheme: dark;
+
+  --sara-background: #151217;
+  --sara-surface: #1e1a22;
+  --sara-surface-subtle: #28232c;
+  --sara-text: #f3eef5;
+  --sara-text-secondary: #beb4c4;
+  --sara-border: #3d3544;
+  --sara-border-control: #807488;
+
+  --sara-action: #c5aed0;
+  --sara-action-hover: #d3bfdc;
+  --sara-action-active: #b69cc3;
+  --sara-on-action: #231b28;
+  --sara-action-soft: #302635;
+
+  --sara-focus: #c5aed0;
+  --sara-focus-gap: #1e1a22;
+
+  --sara-success: #81c995;
+  --sara-success-soft: #173b2c;
+  --sara-warning: #ffd28a;
+  --sara-warning-soft: #3d2f14;
+  --sara-error: #ffa6a0;
+  --sara-error-soft: #49292d;
+  --sara-info: #beb4c4;
+  --sara-info-soft: #28232c;
+  --sara-info-border: #807488;
+
+  --sara-disabled-background: #231f27;
+  --sara-disabled-text: #73697a;
+  --sara-disabled-border: #3d3544;
+
+  --sara-rgb-background: 21, 18, 23;
+  --sara-rgb-surface: 30, 26, 34;
+  --sara-rgb-surface-subtle: 40, 35, 44;
+  --sara-rgb-text: 243, 238, 245;
+  --sara-rgb-text-secondary: 190, 180, 196;
+  --sara-rgb-border: 61, 53, 68;
+  --sara-rgb-border-control: 128, 116, 136;
+  --sara-rgb-action: 197, 174, 208;
+  --sara-rgb-action-hover: 211, 191, 220;
+  --sara-rgb-action-active: 182, 156, 195;
+  --sara-rgb-on-action: 35, 27, 40;
+  --sara-rgb-action-soft: 48, 38, 53;
+  --sara-rgb-success: 129, 201, 149;
+  --sara-rgb-warning: 255, 210, 138;
+  --sara-rgb-error: 255, 166, 160;
+  --sara-rgb-info: 190, 180, 196;
+}
+
+/* ==========================================================================
+   Clases de Componentes Estándar (Cero Degradados)
+   ========================================================================== */
+.sara-surface {
+  background-color: var(--sara-surface);
+  color: var(--sara-text);
+}
+
+.sara-surface-subtle {
+  background-color: var(--sara-surface-subtle);
+  color: var(--sara-text);
+}
+
+.sara-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sara-space-2);
+  background-color: var(--sara-action);
+  color: var(--sara-on-action);
+  border: 1px solid transparent;
+  border-radius: var(--sara-radius-control);
+  font-family: var(--sara-font-ui);
+  font-size: var(--sara-text-meta-size);
+  font-weight: var(--sara-weight-ui-medium);
+  min-height: var(--sara-size-control-min);
+  padding: 0 var(--sara-space-4);
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.sara-btn-primary:hover {
+  background-color: var(--sara-action-hover);
+}
+
+.sara-btn-primary:active {
+  background-color: var(--sara-action-active);
+}
+
+.sara-btn-primary:focus-visible {
+  outline: var(--sara-focus-width) solid var(--sara-focus);
+  outline-offset: var(--sara-focus-offset);
+}
+
+.sara-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sara-space-2);
+  background-color: var(--sara-surface);
+  color: var(--sara-text);
+  border: 1px solid var(--sara-border-control);
+  border-radius: var(--sara-radius-control);
+  font-family: var(--sara-font-ui);
+  font-size: var(--sara-text-meta-size);
+  font-weight: var(--sara-weight-ui-medium);
+  min-height: var(--sara-size-control-min);
+  padding: 0 var(--sara-space-4);
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.sara-btn-secondary:hover {
+  background-color: var(--sara-surface-subtle);
+  border-color: var(--sara-text-secondary);
+}
+
+.sara-btn-secondary:focus-visible {
+  outline: var(--sara-focus-width) solid var(--sara-focus);
+  outline-offset: var(--sara-focus-offset);
+}
+
+.sara-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sara-space-2);
+  padding: var(--sara-space-2) var(--sara-space-3);
+  border-radius: var(--sara-radius-control);
+  color: var(--sara-text-secondary);
+  text-decoration: none;
+  font-family: var(--sara-font-ui);
+  font-size: var(--sara-text-body-size);
+  border-left: 3px solid transparent;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.sara-nav-item:hover {
+  background-color: var(--sara-surface-subtle);
+  color: var(--sara-text);
+}
+
+.sara-nav-item.is-active,
+.sara-nav-item[aria-current="page"] {
+  background-color: var(--sara-action-soft);
+  color: var(--sara-text);
+  font-weight: var(--sara-weight-ui-semibold);
+  border-left-color: var(--sara-action);
+}
+
+.sara-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sara-space-1);
+  padding: var(--sara-space-1) var(--sara-space-2);
+  background-color: var(--sara-surface-subtle);
+  color: var(--sara-text);
+  border: 1px solid var(--sara-border);
+  border-radius: var(--sara-radius-control);
+  font-family: var(--sara-font-ui);
+  font-size: var(--sara-text-meta-size);
+  font-weight: var(--sara-weight-ui-medium);
+  line-height: 1;
+}

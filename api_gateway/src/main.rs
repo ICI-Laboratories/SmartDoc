@@ -5,7 +5,7 @@ use axum::{
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{any, get, post},
     Json, Router,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -37,6 +37,9 @@ const MAX_PENDING_OAUTH_TRANSACTIONS: usize = 10_000;
 
 #[derive(Clone)]
 struct Config {
+    anonymous: bool,
+    login_enabled: bool,
+    ephemeral_hours: u64,
     auth_portal_authorize_url: Url,
     identity_url: Url,
     callback_url: Url,
@@ -51,6 +54,7 @@ struct Config {
     oauth_transaction_ttl: Duration,
     doc_processor_url: String,
     llm_service_url: String,
+    library_url: String,
     max_body_bytes: usize,
     listen_addr: SocketAddr,
 }
@@ -102,6 +106,9 @@ impl Config {
             .parse()
             .context("SMARTDOC_GATEWAY_LISTEN no es una direccion socket valida")?;
         Ok(Self {
+            anonymous: optional_bool("SARA_ANONYMOUS")?.unwrap_or(true),
+            login_enabled: optional_bool("SARA_LOGIN_ENABLED")?.unwrap_or(false),
+            ephemeral_hours: env_u64("SARA_EPHEMERAL_HOURS",24,1,168)?,
             auth_portal_authorize_url,
             identity_url,
             callback_url,
@@ -126,6 +133,7 @@ impl Config {
                 .unwrap_or_else(|_| "http://127.0.0.1:8045".to_string()),
             llm_service_url: env::var("SMARTREVIEW_LLM_SERVICE_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8044".to_string()),
+            library_url: env::var("SARA_LIBRARY_URL").unwrap_or_else(|_| "http://127.0.0.1:8046".to_string()),
             max_body_bytes: env_u64(
                 "SMARTREVIEW_MAX_BODY_BYTES",
                 100 * 1024 * 1024,
@@ -223,7 +231,8 @@ async fn main() -> Result<()> {
         address = %config.listen_addr,
         client_id = CLIENT_ID,
         audience = RESOURCE_AUDIENCE,
-        "SmartDoc gateway listo con identidad central"
+        anonymous = config.anonymous,
+        "SARA DocReader gateway listo"
     );
     let listener = TcpListener::bind(config.listen_addr).await?;
     axum::serve(listener, app).await?;
@@ -231,7 +240,9 @@ async fn main() -> Result<()> {
 }
 
 fn build_app(state: AppState) -> Result<Router> {
+    if state.config.anonymous { return build_anonymous_app(state); }
     let protected = Router::new()
+        .route("/api/*path", any(library_handler))
         .route("/process_document/", post(process_document_handler))
         .fallback(llm_handler);
     let allowed_origin = HeaderValue::from_str(&state.config.frontend_origin)
@@ -260,6 +271,164 @@ fn build_app(state: AppState) -> Result<Router> {
         .layer(CompressionLayer::new())
         .layer(cors)
         .with_state(state))
+}
+
+const VISITOR_COOKIE: &str = "sara_visitor";
+
+#[derive(Deserialize)]
+struct AnonymousSession {
+    subject: String,
+    token: Option<String>,
+    max_age: u64,
+    #[serde(default)]
+    ephemeral: bool,
+}
+
+fn build_anonymous_app(state: AppState) -> Result<Router> {
+    let protected = Router::new()
+        .route("/api/*path", any(library_handler))
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_anonymous_session));
+    // Only the new catalog is reachable anonymously. Legacy identity namespaces
+    // and internal session/analytics administration routes are never exposed.
+    Ok(Router::new()
+        .route("/health", get(health_handler))
+        .route("/session/me", get(access_session_handler))
+        .route("/session/anonymous", post(anonymous_session_handler))
+        .route("/session/end", post(end_access_handler))
+        .route("/auth/login", get(optional_login_handler))
+        .route("/auth/callback", get(optional_callback_handler))
+        .merge(protected)
+        .layer(CompressionLayer::new())
+        .with_state(state))
+}
+
+async fn resolve_anonymous(state: &AppState, headers: &HeaderMap, create: bool)
+    -> std::result::Result<AnonymousSession, StatusCode> {
+    let token = cookie_value(headers, VISITOR_COOKIE);
+    if !create && token.is_none() { return Err(StatusCode::UNAUTHORIZED); }
+    let response = state.http_client
+        .post(format!("{}/internal/anonymous/session", state.config.library_url.trim_end_matches('/')))
+        .timeout(Duration::from_secs(3))
+        .json(&json!({"token":token,"create":create}))
+        .send().await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !response.status().is_success() { return Err(StatusCode::SERVICE_UNAVAILABLE); }
+    let session: AnonymousSession = response.json().await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if Uuid::parse_str(&session.subject).map(|id| id.to_string() != session.subject).unwrap_or(true)
+        || session.max_age == 0 || session.max_age > 180*24*3600 {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    if session.token.as_ref().is_some_and(|value| value.len() < 32 || value.len() > 128
+        || !value.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')) {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    Ok(session)
+}
+
+fn anonymous_error(status: StatusCode) -> Response {
+    no_store_json(status,json!({"error": if status == StatusCode::UNAUTHORIZED {
+        "Vuelve a abrir la biblioteca para iniciar una sesión anónima."
+    } else { "No se pudo abrir la biblioteca. Intenta nuevamente." }}))
+}
+
+async fn anonymous_session_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if validate_mutation_request(&state.config,&headers).is_err()
+        || headers.get("sec-fetch-site").and_then(|v|v.to_str().ok()) == Some("cross-site")
+        || headers.get(header::ORIGIN).and_then(|v|v.to_str().ok())
+            .is_some_and(|v| v != state.config.frontend_origin) {
+        return anonymous_error(StatusCode::FORBIDDEN);
+    }
+    match resolve_anonymous(&state,&headers,true).await {
+        Ok(session) => {
+            let mut response = no_store_json(StatusCode::OK,json!({"anonymous":true,"mode":if session.ephemeral {"ephemeral"} else {"anonymous"},"expires_in":session.max_age,"login_available":state.config.login_enabled}));
+            let mut cookie_config = (*state.config).clone();
+            cookie_config.cookie_domain = None;
+            if let Some(token) = session.token {
+                append_cookie(&mut response,&build_cookie(VISITOR_COOKIE,&token,"/",session.max_age,true,&cookie_config));
+            }
+            if cookie_value(&headers,&state.config.csrf_cookie_name).is_none() {
+                append_cookie(&mut response,&build_cookie(&state.config.csrf_cookie_name,&random_token(32),"/",session.max_age,false,&cookie_config));
+            }
+            append_cookie(&mut response,&delete_cookie(&state.config.session_cookie_name,"/",&state.config));
+            response
+        }
+        Err(status) => anonymous_error(status),
+    }
+}
+
+async fn optional_login_handler(State(state): State<AppState>) -> Response {
+    if !state.config.login_enabled { return no_store_json(StatusCode::SERVICE_UNAVAILABLE,json!({"error":"El portal de cuentas aún no está configurado."})); }
+    auth_login_handler(State(state)).await
+}
+
+async fn optional_callback_handler(State(state): State<AppState>, headers: HeaderMap, query: axum::extract::Query<CallbackQuery>) -> Response {
+    if !state.config.login_enabled { return StatusCode::NOT_FOUND.into_response(); }
+    auth_callback_handler(State(state),query,headers).await
+}
+
+async fn access_session_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if headers.get("sec-fetch-site").and_then(|v|v.to_str().ok()) == Some("cross-site")
+        || headers.get(header::ORIGIN).and_then(|v|v.to_str().ok()).is_some_and(|v|v != state.config.frontend_origin) {
+        return anonymous_error(StatusCode::FORBIDDEN);
+    }
+    let payload = if state.config.login_enabled && cookie_value(&headers,&state.config.session_cookie_name).is_some() {
+        match authenticate_request(&state,&headers).await {
+            Ok(_) => json!({"mode":"account","anonymous":false,"login_available":true}),
+            Err(SessionError::Unauthorized) => json!({"mode":"choose","ephemeral_hours":state.config.ephemeral_hours,"login_available":true}),
+            Err(error) => return session_error_response(error),
+        }
+    } else {
+        match resolve_anonymous(&state,&headers,false).await {
+            Ok(session) => json!({"mode":if session.ephemeral {"ephemeral"} else {"anonymous"},"anonymous":true,"expires_in":session.max_age,"login_available":state.config.login_enabled}),
+            Err(StatusCode::UNAUTHORIZED) => json!({"mode":"choose","ephemeral_hours":state.config.ephemeral_hours,"login_available":state.config.login_enabled}),
+            Err(status) => return anonymous_error(status),
+        }
+    };
+    let mut response=no_store_json(StatusCode::OK,payload);
+    if cookie_value(&headers,&state.config.csrf_cookie_name).is_none() {
+        let mut config=(*state.config).clone(); config.cookie_domain=None;
+        append_cookie(&mut response,&build_cookie(&config.csrf_cookie_name,&random_token(32),"/",180*24*3600,false,&config));
+    }
+    response
+}
+
+async fn end_access_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if validate_mutation_request(&state.config,&headers).is_err() { return anonymous_error(StatusCode::FORBIDDEN); }
+    // Explicit exit expires the temporary capability; deletion runs in the catalog.
+    if let Some(token)=cookie_value(&headers,VISITOR_COOKIE) {
+        let result=state.http_client.post(format!("{}/internal/anonymous/end",state.config.library_url.trim_end_matches('/')))
+            .timeout(Duration::from_secs(5)).json(&json!({"token":token,"create":false})).send().await;
+        if !result.is_ok_and(|r|r.status().is_success()) { return anonymous_error(StatusCode::SERVICE_UNAVAILABLE); }
+    }
+    let mut response=auth_logout_handler(State(state.clone()),headers).await;
+    let mut config=(*state.config).clone(); config.cookie_domain=None;
+    append_cookie(&mut response,&delete_cookie(VISITOR_COOKIE,"/",&config));
+    *response.status_mut()=StatusCode::OK;
+    *response.body_mut()=Body::from("{}");
+    response
+}
+
+async fn require_anonymous_session(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
+    if !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS)
+        && validate_mutation_request(&state.config,req.headers()).is_err() {
+        return anonymous_error(StatusCode::FORBIDDEN);
+    }
+    // A stale or failed account session must never silently fall back to a guest.
+    if state.config.login_enabled && cookie_value(req.headers(),&state.config.session_cookie_name).is_some() {
+        return match authenticate_request(&state,req.headers()).await {
+            Ok((_,principal)) => { req.extensions_mut().insert(principal); next.run(req).await },
+            Err(error) => session_error_response(error),
+        };
+    }
+    match resolve_anonymous(&state,req.headers(),false).await {
+        Ok(session) => {
+            req.extensions_mut().insert(Principal {subject: session.subject});
+            next.run(req).await
+        }
+        Err(status) => anonymous_error(status),
+    }
 }
 
 fn spawn_session_cleanup(state: AppState) {
@@ -798,6 +967,20 @@ async fn process_document_handler(
     .await
 }
 
+async fn library_handler(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    req: Request,
+) -> Response {
+    proxy_handler(
+        state.http_client.clone(),
+        &state.config.library_url,
+        req,
+        state.config.max_body_bytes,
+        &principal.subject,
+    ).await
+}
+
 async fn llm_handler(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -844,7 +1027,17 @@ async fn proxy_handler(
         .map(|value| format!("?{value}"))
         .unwrap_or_default();
     let target_url = format!("{}{}{}", base_url.trim_end_matches('/'), path, query);
-    let body_bytes = match to_bytes(body, max_body_bytes).await {
+    let body = if path == "/api/documents" && parts.method == Method::POST {
+        if parts.headers.get(header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok())
+            .is_some_and(|length| length > max_body_bytes) {
+            return no_store_json(StatusCode::PAYLOAD_TOO_LARGE, json!({"error": "Archivo demasiado grande"}));
+        }
+        reqwest::Body::wrap_stream(
+            Body::new(http_body_util::Limited::new(body, max_body_bytes)).into_data_stream()
+        )
+    } else {
+        let body_bytes = match to_bytes(body, max_body_bytes).await {
         Ok(body) => body,
         Err(_) => {
             return no_store_json(
@@ -852,6 +1045,8 @@ async fn proxy_handler(
                 json!({"error": "Cuerpo invalido o demasiado grande"}),
             )
         }
+    };
+        reqwest::Body::from(body_bytes)
     };
     let method = method_to_reqwest(&parts.method);
     let mut req_headers = headers_axum_to_reqwest(&parts.headers);
@@ -866,7 +1061,7 @@ async fn proxy_handler(
     match client
         .request(method, &target_url)
         .headers(req_headers)
-        .body(body_bytes)
+        .body(body)
         .send()
         .await
     {
@@ -1369,13 +1564,85 @@ mod tests {
         StatusCode::NO_CONTENT
     }
 
-    async fn mock_product(headers: HeaderMap) -> impl IntoResponse {
+    #[tokio::test]
+    async fn anonymous_flow_keeps_capability_private_and_survives_gateway_restart() {
+        const TOKEN: &str = "anonymous_capability_random_example_1234567890123";
+        async fn resolver(Json(body): Json<serde_json::Value>) -> Response {
+            if body["token"] == TOKEN {
+                Json(json!({"subject":"123e4567-e89b-12d3-a456-426614174000", "token":null,"max_age":1000})).into_response()
+            } else if body["create"] == true {
+                Json(json!({"subject":"123e4567-e89b-12d3-a456-426614174000", "token":TOKEN,"max_age":1000})).into_response()
+            } else { StatusCode::UNAUTHORIZED.into_response() }
+        }
+        let upstream = spawn_test_server(Router::new()
+            .route("/internal/anonymous/session",post(resolver)).fallback(any(mock_product))).await;
+        let mut config = Config::from_env().unwrap();
+        config.anonymous=true;
+        config.library_url=format!("http://{upstream}");
+        let state = AppState {
+            http_client: Client::new(), sessions: Arc::new(DashMap::new()),
+            oauth_transactions: Arc::new(DashMap::new()),refresh_locks:Arc::new(DashMap::new()),
+            active_users:Arc::new(DashMap::new()),config:Arc::new(config),
+        };
+        let origin=state.config.frontend_origin.clone();
+        let gateway = spawn_test_server(build_app(state.clone()).unwrap()).await;
+        let client=Client::new();
+        let url=format!("http://{gateway}");
+        assert_eq!(client.get(format!("{url}/api/documents")).send().await.unwrap().status(),401);
+        let choose=client.get(format!("{url}/session/me")).send().await.unwrap();
+        let csrf=named_set_cookie(&choose,"smartdoc_csrf");
+        assert_eq!(choose.json::<serde_json::Value>().await.unwrap()["mode"],"choose");
+        assert_eq!(client.post(format!("{url}/session/anonymous")).send().await.unwrap().status(),403);
+        let bootstrap=client.post(format!("{url}/session/anonymous"))
+            .header("Cookie",&csrf).header("Origin",&origin)
+            .header("X-CSRF-Token",csrf.split_once('=').unwrap().1).send().await.unwrap();
+        assert_eq!(bootstrap.status(),200);
+        let visitor=named_set_cookie(&bootstrap,VISITOR_COOKIE);
+        assert!(bootstrap.headers().get_all("set-cookie").iter().any(|c| c.to_str().unwrap().contains("HttpOnly")));
+        let payload=bootstrap.json::<serde_json::Value>().await.unwrap();
+        assert_eq!(payload["anonymous"],true);
+        assert!(payload.get("subject").is_none());
+        assert!(payload.get("token").is_none());
+        let cookies=format!("{visitor}; {csrf}");
+        let product=client.get(format!("{url}/api/documents")).header("Cookie",&cookies)
+            .header("X-SmartDoc-Subject","attacker").send().await.unwrap();
+        let body=product.json::<serde_json::Value>().await.unwrap();
+        assert_eq!(body["subject"],"123e4567-e89b-12d3-a456-426614174000");
+        assert_eq!(body["cookie_present"],false);
+        assert_eq!(client.post(format!("{url}/api/events")).header("Cookie",&cookies).send().await.unwrap().status(),403);
+        assert_eq!(client.post(format!("{url}/api/events")).header("Cookie",&cookies)
+            .header("Origin",&origin).header("X-CSRF-Token",csrf.split_once('=').unwrap().1)
+            .send().await.unwrap().status(),200);
+        assert_eq!(client.get(format!("{url}/session/me")).header("Sec-Fetch-Site","cross-site").send().await.unwrap().status(),403);
+        assert_eq!(client.get(format!("{url}/auth/login")).send().await.unwrap().status(),503);
+        for path in ["/internal/anonymous/session","/process_document/"] {
+            assert_eq!(client.get(format!("{url}{path}")).send().await.unwrap().status(),404);
+        }
+        assert_eq!(client.get(format!("{url}/api/documents")).header("Cookie","sara_visitor=attacker").send().await.unwrap().status(),401);
+        let restarted=spawn_test_server(build_app(state).unwrap()).await;
+        assert_eq!(client.get(format!("http://{restarted}/api/documents")).header("Cookie",&cookies).send().await.unwrap().status(),200);
+        let revisit=client.get(format!("{url}/session/me")).header("Cookie",&cookies).send().await.unwrap();
+        assert_eq!(revisit.status(),200);
+        assert!(revisit.headers().get("set-cookie").is_none());
+    }
+
+    #[tokio::test]
+    async fn library_upload_declared_limit_is_enforced_before_forwarding() {
+        let request = Request::builder().method(Method::POST).uri("/api/documents")
+            .header(header::CONTENT_LENGTH, "100").body(Body::from("small")).unwrap();
+        let response = proxy_handler(Client::new(), "http://127.0.0.1:1", request, 10,
+            "123e4567-e89b-12d3-a456-426614174000").await;
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    async fn mock_product(headers: HeaderMap, body: axum::body::Bytes) -> impl IntoResponse {
         Json(json!({
             "subject": headers.get("X-SmartDoc-Subject").and_then(|value| value.to_str().ok()),
             "x_user_id_present": headers.contains_key("X-User-ID"),
             "audience_present": headers.contains_key("X-Resource-Audience"),
             "authorization_present": headers.contains_key("Authorization"),
             "cookie_present": headers.contains_key("Cookie"),
+            "body_bytes": body.len(),
         }))
     }
 
@@ -1425,6 +1692,9 @@ mod tests {
         let upstream_addr = spawn_test_server(upstream).await;
         let identity_url = Url::parse(&format!("http://{upstream_addr}/")).unwrap();
         let config = Arc::new(Config {
+            anonymous: false,
+            login_enabled: true,
+            ephemeral_hours:24,
             auth_portal_authorize_url: Url::parse("http://127.0.0.1:3000/authorize").unwrap(),
             identity_url: identity_url.clone(),
             callback_url: Url::parse("http://127.0.0.1:8043/auth/callback").unwrap(),
@@ -1439,6 +1709,7 @@ mod tests {
             oauth_transaction_ttl: Duration::from_secs(300),
             doc_processor_url: identity_url.to_string(),
             llm_service_url: identity_url.to_string(),
+            library_url: identity_url.to_string(),
             max_body_bytes: 1024 * 1024,
             listen_addr: "127.0.0.1:0".parse().unwrap(),
         });
@@ -1536,7 +1807,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bff_flow_keeps_tokens_server_side_and_strips_spoofed_identity() {
+    async fn bff_flow_keeps_tokens_server_side_and_strips_spoofed_identity() { central_flow(false).await; }
+
+    #[tokio::test]
+    async fn mixed_mode_supports_central_pkce_and_account_isolation() { central_flow(true).await; }
+
+    async fn central_flow(mixed: bool) {
         let upstream = Router::new()
             .route("/oauth/token", axum_post(mock_token))
             .route("/auth/introspect", get(mock_introspect))
@@ -1549,6 +1825,9 @@ mod tests {
         let upstream_url = Url::parse(&format!("http://{upstream_addr}/")).unwrap();
         let callback_url = Url::parse(&format!("http://{gateway_addr}/auth/callback")).unwrap();
         let config = Arc::new(Config {
+            anonymous: mixed,
+            login_enabled: true,
+            ephemeral_hours:24,
             auth_portal_authorize_url: Url::parse("http://127.0.0.1:3000/authorize").unwrap(),
             identity_url: upstream_url.clone(),
             callback_url: callback_url.clone(),
@@ -1563,6 +1842,7 @@ mod tests {
             oauth_transaction_ttl: Duration::from_secs(300),
             doc_processor_url: upstream_url.to_string(),
             llm_service_url: upstream_url.to_string(),
+            library_url: upstream_url.to_string(),
             max_body_bytes: 1024 * 1024,
             listen_addr: gateway_addr,
         });
@@ -1660,13 +1940,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(me.status(), reqwest::StatusCode::OK);
-        assert_eq!(
-            me.json::<serde_json::Value>().await.unwrap()["subject"],
-            "123e4567-e89b-12d3-a456-426614174000"
-        );
+        let me=me.json::<serde_json::Value>().await.unwrap();
+        if mixed { assert_eq!(me["mode"],"account"); } else {
+            assert_eq!(me["subject"],"123e4567-e89b-12d3-a456-426614174000");
+        }
 
         let product = client
-            .get(format!("{gateway_base}/echo"))
+            .get(format!("{gateway_base}/api/documents"))
             .header("Cookie", &browser_cookies)
             .header("Authorization", "Bearer attacker")
             .header("X-User-ID", "attacker")
@@ -1684,7 +1964,7 @@ mod tests {
         assert_eq!(product["cookie_present"], false);
 
         let rejected = client
-            .post(format!("{gateway_base}/echo"))
+            .post(format!("{gateway_base}/api/documents"))
             .header("Cookie", &browser_cookies)
             .header("Origin", "http://127.0.0.1:8501")
             .header("X-CSRF-Token", "wrong")
@@ -1694,30 +1974,33 @@ mod tests {
         assert_eq!(rejected.status(), reqwest::StatusCode::FORBIDDEN);
 
         let accepted = client
-            .post(format!("{gateway_base}/echo"))
+            .post(format!("{gateway_base}/api/documents"))
             .header("Cookie", &browser_cookies)
             .header("Origin", "http://127.0.0.1:8501")
             .header("X-CSRF-Token", &csrf_value)
+            .body("%PDF-1.7 fixture")
             .send()
             .await
             .unwrap();
         assert_eq!(accepted.status(), reqwest::StatusCode::OK);
+        assert_eq!(accepted.json::<serde_json::Value>().await.unwrap()["body_bytes"], 16);
 
         let logout = client
-            .post(format!("{gateway_base}/auth/logout"))
+            .post(format!("{gateway_base}{}",if mixed {"/session/end"} else {"/auth/logout"}))
             .header("Cookie", &browser_cookies)
             .header("Origin", "http://127.0.0.1:8501")
             .header("X-CSRF-Token", csrf_value)
             .send()
             .await
             .unwrap();
-        assert_eq!(logout.status(), reqwest::StatusCode::NO_CONTENT);
+        assert_eq!(logout.status(), if mixed {reqwest::StatusCode::OK} else {reqwest::StatusCode::NO_CONTENT});
         let after_logout = client
             .get(format!("{gateway_base}/session/me"))
             .header("Cookie", browser_cookies)
             .send()
             .await
             .unwrap();
-        assert_eq!(after_logout.status(), reqwest::StatusCode::UNAUTHORIZED);
+        assert_eq!(after_logout.status(), if mixed {reqwest::StatusCode::OK} else {reqwest::StatusCode::UNAUTHORIZED});
+        if mixed { assert_eq!(after_logout.json::<serde_json::Value>().await.unwrap()["mode"],"choose"); }
     }
 }

@@ -1,0 +1,17 @@
+.git
+.venv
+**/node_modules
+**/.svelte-kit
+**/build
+**/target
+**/__pycache__
+.env
+.env.*
+smartdoc_data
+sara_data
+test-results
+playwright-report
+
+**/test-results
+**/playwright-report
+tests/.generated

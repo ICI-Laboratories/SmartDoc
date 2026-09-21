@@ -59,3 +59,17 @@ api_gateway/smartreview_users.db-wal
 !.env.example
 *.log
 
+
+# SARA web and catalog
+node_modules/
+.svelte-kit/
+/sara_data/
+**/test-results/
+**/playwright-report/
+!/web/package.json
+!/web/package-lock.json
+!/web/tsconfig.json
+!/api_gateway/Cargo.lock
+!.env.sara.example
+
+/tests/.generated/
