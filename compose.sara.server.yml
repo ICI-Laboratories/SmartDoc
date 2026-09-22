@@ -16,6 +16,14 @@ services:
       - default
       - llm-apps
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    command: ["tunnel", "--no-autoupdate", "run"]
+
 networks:
   identity-clients:
     name: sara-identity-clients
