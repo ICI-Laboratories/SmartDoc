@@ -1353,7 +1353,7 @@ fn is_local_transport_host(host: &str) -> bool {
     matches!(
         host,
         "localhost" | "127.0.0.1" | "[::1]" | "::1" | "host.docker.internal"
-    )
+    ) || (!host.is_empty() && !host.contains('.') && !host.contains(':'))
 }
 
 fn url_origin(url: &Url) -> Result<String> {

@@ -1,0 +1,25 @@
+services:
+  api_gateway:
+    environment:
+      SMARTDOC_IDENTITY_URL: http://sara-identity:8001
+    networks:
+      - default
+      - identity-clients
+
+  library:
+    networks:
+      - default
+      - llm-apps
+
+  worker:
+    networks:
+      - default
+      - llm-apps
+
+networks:
+  identity-clients:
+    name: sara-identity-clients
+    external: true
+  llm-apps:
+    name: llm-apps
+    external: true
