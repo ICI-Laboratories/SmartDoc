@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     libgl1 \
     libglib2.0-0 \
+    tesseract-ocr \
+    tesseract-ocr-spa \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -16,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy service code
 COPY document_processor ./document_processor
+COPY library_service ./library_service
 
 # Expose port
 EXPOSE 8002

@@ -34,19 +34,31 @@ services:
     environment:
       SMARTREVIEW_BASE: /app/data
       SMARTREVIEW_LLM_SERVICE_URL: http://llm_service:8001
+      LLM_GATEWAY_BASE_URL: ${LLM_GATEWAY_BASE_URL:-http://llm-gateway:8000/v1}
+      LLM_GATEWAY_API_KEY: ${LLM_GATEWAY_API_KEY:-}
+      SARA_EMBEDDING_MODEL: ${SARA_EMBEDDING_MODEL:-}
+      SARA_EMBEDDING_REVISION: ${SARA_EMBEDDING_REVISION:-llama.cpp-v1}
+      SARA_EMBEDDING_QUERY_INSTRUCTION: ${SARA_EMBEDDING_QUERY_INSTRUCTION:-}
+      SARA_OCR_MODEL: ${SARA_OCR_MODEL:-}
+      SARA_OCR_PROFILE: ${SARA_OCR_PROFILE:-glm-ocr}
+      SARA_OCR_MAX_SIDE: ${SARA_OCR_MAX_SIDE:-1600}
     volumes:
       - ./smartdoc_data:/app/data
     networks:
       - smartdoc_network
+      - llm-apps
 
   llm_service:
     build:
       context: .
       dockerfile: llm_service/Dockerfile
     environment:
-      # Forcing host.docker.internal so the container can reach the host's Ollama, ignoring .env
-      - SMARTREVIEW_LM_URL=http://host.docker.internal:11434/v1/chat/completions
-      - SMARTREVIEW_MODEL=${SMARTREVIEW_MODEL:-qwen3:30b-a3b}
+      - LLM_GATEWAY_BASE_URL=${LLM_GATEWAY_BASE_URL:-http://llm-gateway:8000/v1}
+      - LLM_GATEWAY_API_KEY=${LLM_GATEWAY_API_KEY:-}
+      - SARA_EMBEDDING_MODEL=${SARA_EMBEDDING_MODEL:-}
+      - SARA_EMBEDDING_REVISION=${SARA_EMBEDDING_REVISION:-llama.cpp-v1}
+      - SARA_EMBEDDING_QUERY_INSTRUCTION=${SARA_EMBEDDING_QUERY_INSTRUCTION:-}
+      - SMARTREVIEW_MODEL=${SMARTREVIEW_MODEL:-sara-main}
       - SMARTREVIEW_LM_TIMEOUT=${SMARTREVIEW_LM_TIMEOUT:-300}
       - SMARTREVIEW_BASE=/app/data
     volumes:
@@ -55,6 +67,7 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - smartdoc_network
+      - llm-apps
 
   frontend:
     build:
@@ -75,5 +88,8 @@ services:
       - api_gateway
 
 networks:
+  llm-apps:
+    name: llm-apps
+    external: true
   smartdoc_network:
     driver: bridge

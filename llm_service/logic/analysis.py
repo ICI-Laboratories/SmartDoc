@@ -5,14 +5,13 @@ import re
 import heapq
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
+from library_service.search import embed, embedding_identity, model_name
 
 logger = logging.getLogger(__name__)
 
 _MIN_COMBINED_SCORE = 0.30
 _DEFAULT_ALPHA = 0.5
-_EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
 
 def _tokenize(text: str) -> List[str]:
     if not text:
@@ -32,15 +31,19 @@ def _safe_semantic_scale(arr: np.ndarray) -> np.ndarray:
 
 def _load_npz(vector_path: Path):
     try:
-        data = np.load(vector_path, allow_pickle=True, mmap_mode="r")
-        if "chunks" not in data or "embeddings" not in data:
-            raise ValueError("El archivo NPZ no contiene 'chunks' ni 'embeddings'")
-        chunks = np.array(data["chunks"], dtype=object)
-        embeddings = np.array(data["embeddings"])
+        with np.load(vector_path, allow_pickle=False) as data:
+            if not embedding_identity() or "embedding_identity" not in data or str(data["embedding_identity"].item()) != embedding_identity():
+                raise ValueError("Los vectores deben regenerarse con el modelo y revisión del gateway configurados.")
+            if "chunks" not in data or "embeddings" not in data:
+                raise ValueError("El archivo NPZ no contiene 'chunks' ni 'embeddings'")
+            chunks = np.array(data["chunks"], dtype=str)
+            embeddings = np.array(data["embeddings"])
         if chunks.size == 0 or embeddings.size == 0:
             raise ValueError("NPZ sin datos")
         if len(chunks) != embeddings.shape[0]:
             raise ValueError("Desalineación entre 'chunks' y 'embeddings'")
+        if embeddings.ndim != 2 or embeddings.shape[1] != 1024 or not np.all(np.isfinite(embeddings)):
+            raise ValueError("Vectores incompatibles con el modelo del gateway")
         return chunks, embeddings
     except Exception as e:
         logger.error(f"Error cargando NPZ {vector_path}: {e}", exc_info=True)
@@ -51,29 +54,23 @@ def _l2_normalize(mat: np.ndarray, axis: int = -1, eps: float = 1e-12) -> np.nda
     norms = np.maximum(norms, eps)
     return (mat / norms).astype(np.float32)
 
-try:
-    EMBEDDING_MODEL = SentenceTransformer(_EMBEDDING_MODEL_NAME)
-    logger.info(f"Modelo de SentenceTransformer '{_EMBEDDING_MODEL_NAME}' cargado en llm_service.")
-except Exception as e:
-    logger.error(f"FATAL: No se pudo cargar el modelo de SentenceTransformer: {e}")
-    EMBEDDING_MODEL = None
-
-
 def hybrid_search_in_docs(
     doc_paths: List[str],
     query: str,
     top_k: int = 5,
     alpha: float = _DEFAULT_ALPHA
 ) -> List[Dict]:
-    if not EMBEDDING_MODEL:
+    if not model_name():
         return [{"error": "El modelo de embeddings no está disponible."}]
     if not query or not query.strip():
         return [{"error": "La consulta de búsqueda no puede estar vacía."}]
 
     alpha = float(min(max(alpha, 0.0), 1.0))
 
-    query_vec = EMBEDDING_MODEL.encode([query], normalize_embeddings=True)
-    query_vec = query_vec.astype(np.float32)
+    try:
+        query_vec = _l2_normalize(np.asarray(embed([query], is_query=True), dtype=np.float32))
+    except Exception:
+        return [{"error": "El gateway de embeddings no está disponible."}]
     q_tokens = _tokenize(query)
 
     unique_tokens = [t for t in dict.fromkeys(q_tokens) if len(t) >= 2]
@@ -147,7 +144,7 @@ def hybrid_search_in_docs(
 
 
 def calculate_document_similarity(doc_paths: List[str]) -> Dict:
-    if not EMBEDDING_MODEL:
+    if not model_name():
         return {"error": "El modelo de embeddings no está disponible."}
 
     doc_vectors: List[np.ndarray] = []

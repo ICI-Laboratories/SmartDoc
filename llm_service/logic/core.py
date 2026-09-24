@@ -6,18 +6,15 @@ from typing import Tuple, List, Dict, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from library_service.gateway import gateway_headers, gateway_url
 
 
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=Path(__file__).parent.parent.parent / '.env', env_file_encoding='utf-8', extra='ignore')
-    inference_server_url: str = Field(alias="SMARTREVIEW_LM_URL", default="http://localhost:1234/v1/chat/completions")
-    model_name: str = Field(alias="SMARTREVIEW_MODEL", default="local-model")
+    model_name: str = Field(alias="SMARTREVIEW_MODEL", default="sara-main")
     request_timeout: float = Field(alias="SMARTREVIEW_LM_TIMEOUT", default=60.0)
 
 settings = LLMSettings()
-
-HEADERS = {"Content-Type": "application/json"}
-
 
 def get_classification_snippet(text: str) -> str:
     lower_text = text.lower()
@@ -81,7 +78,7 @@ def call_llm(
     prompt: str,
     schema: Optional[dict] = None,
     temperature: float = 0.7,
-    max_tokens: int = 3000,
+    max_tokens: int = 2048,
 ) -> dict:
     payload = {
         "model": settings.model_name,
@@ -91,28 +88,37 @@ def call_llm(
         "stream": False,
     }
 
-    # For Ollama, use the 'format' parameter directly (not response_format)
-    # See: https://docs.ollama.com/capabilities/structured-outputs
     if schema:
         # Add schema hint to the prompt for better results
         schema_hint = f"\n\nResponde SOLO con JSON válido siguiendo este esquema: {json.dumps(schema, ensure_ascii=False)}"
         payload["messages"][0]["content"] = prompt + schema_hint
-        # Ollama uses 'format' directly with the schema
-        payload["format"] = schema
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "smartdoc_response", "schema": schema},
+        }
 
     try:
         response = requests.post(
-            settings.inference_server_url,
-            headers=HEADERS,
+            gateway_url("chat/completions"),
+            headers=gateway_headers(),
             json=payload,
-            timeout=settings.request_timeout
+            timeout=settings.request_timeout,
+            allow_redirects=False,
         )
         response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        return {"error": f"Connection error: {e}"}
+        if response.is_redirect:
+            return {"error": "El gateway devolvió una redirección no permitida."}
+    except (requests.exceptions.RequestException, ValueError):
+        return {"error": "El gateway de inferencia no está disponible o no está configurado."}
 
     try:
-        content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        choice = response.json()['choices'][0]
+        if choice.get('finish_reason') != 'stop':
+            return {"error": "El gateway devolvió una respuesta incompleta."}
+        content = choice['message']['content']
+        if not isinstance(content, str) or not content.strip():
+            return {"error": "El gateway devolvió una respuesta vacía."}
+        content = content.strip()
         print(f"\n{'='*60}\nLLM RAW RESPONSE:\n{content}\n{'='*60}\n")
         if schema:
             # Try robust JSON extraction
@@ -124,7 +130,7 @@ def call_llm(
             return {"error": f"Could not parse JSON from response", "response_text": content[:500]}
         else:
             return {"content": content}
-    except (json.JSONDecodeError, IndexError, KeyError) as e:
+    except (json.JSONDecodeError, IndexError, KeyError, TypeError, AttributeError) as e:
         print(f"LLM RESPONSE ERROR: {e}\nRaw: {response.text[:500]}")
         return {"error": f"Invalid response format from LLM: {e}", "response_text": response.text[:500]}
 

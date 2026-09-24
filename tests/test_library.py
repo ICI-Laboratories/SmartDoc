@@ -154,7 +154,7 @@ class LibraryTests(unittest.TestCase):
         from library_service.worker import claim, finish
         self.upload()
         vector=[1.0]+[0.0]*1023
-        finish(self.pool,claim(self.pool),{'pages':1,'model':'model-A','chunks':[{'page':1,'content':'espectroscopia','embedding':vector}]})
+        finish(self.pool,claim(self.pool),{'pages':1,'model':'gateway:model-A@llama.cpp-v1','chunks':[{'page':1,'content':'espectroscopia','embedding':vector}]})
         with patch.dict(os.environ,{'SARA_EMBEDDING_MODEL':'model-B'}),patch('library_service.search.embed',return_value=[vector]):
             self.assertEqual(retrieve(self.pool,self.owner,'unrelated',semantic=True)['items'],[])
         with patch.dict(os.environ,{'SARA_EMBEDDING_MODEL':'model-A'}),patch('library_service.search.embed',return_value=[vector]):
@@ -189,7 +189,7 @@ class LibraryTests(unittest.TestCase):
         from library_service.db import original
         doc=self.upload().json()['document']
         self.process(doc)
-        with patch.dict(os.environ,{'SARA_LLM_URL':'http://model.test/chat','SARA_LLM_MODEL':'test'}):
+        with patch.dict(os.environ,{'LLM_GATEWAY_BASE_URL':'http://gateway.test/v1','LLM_GATEWAY_API_KEY':'test-key','SARA_LLM_MODEL':'test'}):
             self.assertEqual(self.client.post(f"/api/documents/{doc['id']}/summary",headers=self.headers).status_code,202)
         job=claim(self.pool)
         self.assertTrue(job['summary_requested'])
@@ -214,7 +214,7 @@ class LibraryTests(unittest.TestCase):
                 return iter(['data: {"choices":[{"delta":{"content":"Respuesta [Fuente 1]"}}]}','data: [DONE]'])
         @contextmanager
         def fake_stream(*args,**kwargs): yield FakeStream()
-        with patch.dict(os.environ,{'SARA_LLM_URL':'http://model.test/chat','SARA_LLM_MODEL':'test'}),patch('library_service.api.httpx.stream',fake_stream):
+        with patch.dict(os.environ,{'LLM_GATEWAY_BASE_URL':'http://gateway.test/v1','LLM_GATEWAY_API_KEY':'test-key','SARA_LLM_MODEL':'test'}),patch('library_service.api.httpx.stream',fake_stream):
             result=self.client.post('/api/chat',headers=self.headers,json={'question':'espectroscopia','document_ids':[first['id'],second['id']]})
         self.assertEqual(result.status_code,200)
         self.assertIn(first['id'],result.text);self.assertIn(second['id'],result.text)
@@ -226,7 +226,7 @@ class LibraryTests(unittest.TestCase):
         ids=[]
         for name in ('A','B'):
             doc=self.upload(self.pdf(name)).json()['document'];ids.append(doc['id'])
-            finish(self.pool,claim(self.pool),{'pages':1,'model':'test-model','chunks':[{'page':1,'content':name,'embedding':[1.0]+[0.0]*1023}]})
+            finish(self.pool,claim(self.pool),{'pages':1,'model':'gateway:test-model@llama.cpp-v1','chunks':[{'page':1,'content':name,'embedding':[1.0]+[0.0]*1023}]})
         with patch.dict(os.environ,{'SARA_EMBEDDING_MODEL':'test-model'}):
             result=self.client.post('/api/similarity',headers=self.headers,json={'document_ids':ids})
         self.assertEqual(result.status_code,200,result.text)

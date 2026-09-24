@@ -94,7 +94,6 @@ scikit-image==0.25.2
 scikit-learn==1.7.1
 scipy==1.15.2
 semchunk==2.2.2
-sentence-transformers==5.1.0
 shapely==2.1.0
 shellingham==1.5.4
 six==1.17.0

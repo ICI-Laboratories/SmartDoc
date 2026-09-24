@@ -5,16 +5,30 @@ import re
 from typing import List, Tuple
 
 import fitz
-from docling.datamodel.pipeline_options import (
-    EasyOcrOptions,
-    OcrOptions,
-    PdfPipelineOptions,
-    TableFormerMode,
-)
+from library_service.ocr import extract_page, ocr_model
 
 logger = logging.getLogger(__name__)
 
 _PAGE_SPLIT = re.compile(r"--- Página\s+(\d+)\s+---")
+
+
+def embedding_passages(markdown: str):
+    """Keep paragraph selection, bounding long passages without losing tails.
+
+    A character bound is not a tokenizer limit; the model may still reject an
+    unusually token-dense passage. Never truncate it silently to fit a model.
+    """
+    for paragraph in markdown.split('\n\n'):
+        paragraph = paragraph.strip()
+        if len(paragraph) <= 30:
+            continue
+        start = 0
+        while start < len(paragraph):
+            end = min(start + 1800, len(paragraph))
+            yield paragraph[start:end]
+            if end == len(paragraph):
+                break
+            start = end - 180
 
 
 def extract_pages_from_text(text: str) -> List[Tuple[int, str]]:
@@ -47,13 +61,29 @@ def convert_pdf_to_markdown(
     if not pdf_bytes:
         raise ValueError("Se recibieron bytes vacíos para el PDF.")
 
+    if ocr_model():
+        if max_file_size is not None and len(pdf_bytes) > max_file_size:
+            raise ValueError("El PDF supera el tamaño permitido.")
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf:
+            if pdf.needs_pass:
+                raise ValueError("PDF protegido con contraseña.")
+            if len(pdf) > (max_num_pages if max_num_pages is not None else 1500):
+                raise ValueError("El PDF supera el límite de páginas.")
+            parts = []
+            for index, page in enumerate(pdf):
+                native_text = page.get_text(sort=True).strip()
+                text = extract_page(page) if page.get_images() or not native_text else native_text
+                parts.append(f"--- Página {index + 1} ---\n\n{text}")
+            return "\n\n".join(parts).strip()
+
     try:
-        pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        pages_text = [page.get_text() for page in pdf_doc]
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf_doc:
+            pages_text = [page.get_text() for page in pdf_doc]
+            all_pages_native = all(text.strip() for text in pages_text) and not any(page.get_images() for page in pdf_doc)
         total_text_len = sum(len(text) for text in pages_text)
 
         # CORRECCIÓN 1: Umbral aumentado a 1000 para forzar OCR en documentos híbridos
-        if total_text_len > 1000:
+        if total_text_len > 1000 and all_pages_native:
             logger.info("PDF con texto nativo suficiente detectado (>1000 chars). Usando extracción directa (PyMuPDF).")
             md_parts = []
             for i, page_content in enumerate(pages_text):
@@ -76,6 +106,7 @@ def convert_pdf_to_markdown(
         from io import BytesIO
         from docling.document_converter import DocumentConverter, PdfFormatOption
         from docling.datamodel.base_models import InputFormat, DocumentStream
+        from docling.datamodel.pipeline_options import EasyOcrOptions, OcrOptions, PdfPipelineOptions, TableFormerMode
 
         ImageRefMode = None
         try:

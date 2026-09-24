@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sentence_transformers import SentenceTransformer
+from library_service.search import embed, embedding_identity, model_name
 
 
 def get_default_data_dir() -> Path:
@@ -30,7 +30,7 @@ def get_default_data_dir() -> Path:
 
     return base / app_name
 
-from document_processor.core_pdf import convert_pdf_to_markdown, extract_pages_from_text
+from document_processor.core_pdf import convert_pdf_to_markdown, embedding_passages, extract_pages_from_text
 from document_processor.core_io import (
     slugify,
     get_existing_categories,
@@ -45,15 +45,6 @@ from document_processor.llm_client import get_http_client, classify_text, summar
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
-
-
-EMBEDDING_MODEL = None
-try:
-    EMBEDDING_MODEL = SentenceTransformer("BAAI/bge-m3")
-    logger.info("Modelo de SentenceTransformer 'BAAI/bge-m3' cargado correctamente.")
-except Exception as e:
-    logger.error(f"FATAL: No se pudo cargar el modelo de SentenceTransformer: {e}")
-    EMBEDDING_MODEL = None
 
 
 class Settings(BaseSettings):
@@ -178,7 +169,9 @@ async def process_document(
     user_folder = settings.base_dir / central_subject
 
     try:
-        markdown_content = convert_pdf_to_markdown(pdf_bytes)
+        markdown_content = await asyncio.to_thread(
+            convert_pdf_to_markdown, pdf_bytes, max_file_size=settings.max_pdf_bytes,
+        )
         if not markdown_content:
             raise HTTPException(status_code=400, detail="La conversión a Markdown no produjo contenido.")
     except Exception as e:
@@ -219,16 +212,20 @@ async def process_document(
         original_filename=file.filename,
     )
     
-    if EMBEDDING_MODEL:
+    if model_name():
         try:
-            text_chunks = [p.strip() for p in markdown_content.split('\n\n') if len(p.strip()) > 30]
+            text_chunks = list(embedding_passages(markdown_content))
             
             if text_chunks:
                 logger.info(f"Generando {len(text_chunks)} vectores para '{file.filename}'...")
-                embeddings = EMBEDDING_MODEL.encode(text_chunks, show_progress_bar=False, convert_to_numpy=True)
+                vectors = []
+                for offset in range(0, len(text_chunks), 16):
+                    vectors.extend(await asyncio.to_thread(embed, text_chunks[offset:offset + 16], 60))
+                embeddings = np.asarray(vectors, dtype=np.float32)
                 
                 vector_path = md_path.with_suffix(".npz")
-                np.savez_compressed(vector_path, embeddings=embeddings, chunks=np.array(text_chunks, dtype=object))
+                np.savez_compressed(vector_path, embeddings=embeddings, chunks=np.array(text_chunks, dtype=str),
+                                    embedding_identity=np.array(embedding_identity()))
                 logger.info(f"Vectores para '{file.filename}' guardados en: {vector_path}")
             else:
                 logger.warning(f"No se encontraron chunks de texto suficientemente largos para vectorizar en '{file.filename}'.")
@@ -236,7 +233,7 @@ async def process_document(
         except Exception as e:
             logger.error(f"Fallo al crear o guardar los vectores para '{file.filename}': {e}")
     else:
-        logger.warning("El modelo de embeddings no está cargado. Se omitirá el paso de vectorización.")
+        logger.info("Embeddings del gateway desactivados. Se omitirá la vectorización.")
 
     logger.info("Procesado y resumido %s en %.2fs -> %s", file.filename, time.perf_counter() - t0, md_path)
 

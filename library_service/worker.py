@@ -9,7 +9,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from .db import make_pool, original
-from .search import embed, model_name, vector_literal
+from .search import embed, embedding_identity, model_name, vector_literal
+from .ocr import extract_page, ocr_model
 
 log = logging.getLogger(__name__)
 
@@ -43,8 +44,11 @@ def extract(path):
             text = page.get_text(sort=True)
             # OCR is decided per page. Partial OCR keeps native text on mixed pages.
             if page.get_images() or not text.strip():
-                tp = page.get_textpage_ocr(language='spa+eng', dpi=150, full=not text.strip())
-                text = page.get_text(textpage=tp, sort=True)
+                if ocr_model():
+                    text = extract_page(page)
+                else:
+                    tp = page.get_textpage_ocr(language='spa+eng', dpi=150, full=not text.strip())
+                    text = page.get_text(textpage=tp, sort=True)
             for part in split_text(text):
                 chunks.append({'page': index + 1, 'content': part})
         pages = len(pdf)
@@ -69,7 +73,7 @@ def process_child(path, output, summary_requested=False, cached_input=None):
                     vectors = embed([c['content'] for c in batch], timeout=60)
                     for chunk, vector in zip(batch, vectors):
                         chunk['embedding'] = vector
-                model = model_name()
+                model = embedding_identity()
             except Exception:
                 embedding_error = 'No se pudieron generar vectores. La búsqueda por texto sigue disponible.'
                 for chunk in chunks:

@@ -34,13 +34,19 @@ services:
       SARA_EPHEMERAL_HOURS: ${SARA_EPHEMERAL_HOURS:-24}
       SARA_ANALYTICS_ENABLED: ${SARA_ANALYTICS_ENABLED:-true}
       SARA_ANALYTICS_RETENTION_DAYS: ${SARA_ANALYTICS_RETENTION_DAYS:-90}
-      SARA_OLLAMA_URL: ${SARA_OLLAMA_URL:-http://host.docker.internal:11434}
+      LLM_GATEWAY_BASE_URL: ${LLM_GATEWAY_BASE_URL:-http://llm-gateway:8000/v1}
+      LLM_GATEWAY_API_KEY: ${LLM_GATEWAY_API_KEY:-}
       SARA_EMBEDDING_MODEL: ${SARA_EMBEDDING_MODEL:-}
-      SARA_LLM_URL: ${SARA_LLM_URL:-}
+      SARA_EMBEDDING_REVISION: ${SARA_EMBEDDING_REVISION:-llama.cpp-v1}
+      SARA_EMBEDDING_QUERY_INSTRUCTION: ${SARA_EMBEDDING_QUERY_INSTRUCTION:-}
       SARA_LLM_MODEL: ${SARA_LLM_MODEL:-}
+      SARA_OCR_MODEL: ${SARA_OCR_MODEL:-}
+      SARA_OCR_PROFILE: ${SARA_OCR_PROFILE:-glm-ocr}
+      SARA_OCR_MAX_SIDE: ${SARA_OCR_MAX_SIDE:-1600}
     volumes:
       - documents:/data
     extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [default, llm-apps]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -54,6 +60,7 @@ services:
     volumes:
       - documents:/data
     extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [default, llm-apps]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -94,3 +101,7 @@ services:
 volumes:
   catalog:
   documents:
+networks:
+  llm-apps:
+    name: llm-apps
+    external: true

@@ -17,6 +17,7 @@ docker compose --env-file .env.sara -f compose.sara.yml up --build -d
 Abrir `http://127.0.0.1:8043`. El puerto queda en loopback para conectar el proxy HTTPS del servidor. El selector permite crear un espacio temporal sin cuenta (24 horas por defecto). El acceso con cuenta central queda preparado y desactivado hasta conectar el portal; el modo temporal no requiere `auth_services`.
 
 - [Acceso anónimo y métricas de producto](docs/ACCESO_ANONIMO_Y_METRICAS.md)
+- [Configuración del gateway de inferencia y activación por fases](docs/gateway-migration.md)
 - [Despliegue, migración de datos, pruebas y pendientes](docs/MIGRACION_SARA.md)
 - [Métodos investigados y decisiones técnicas](docs/METODOS_DOCUMENTALES.md)
 - [Diagnóstico inicial](docs/PROPUESTA_MODERNIZACION.md)

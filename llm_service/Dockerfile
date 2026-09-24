@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy service code
 COPY llm_service ./llm_service
+COPY library_service ./library_service
 
 # Expose port
 EXPOSE 8001

@@ -2,11 +2,12 @@
 import json
 import os
 import httpx
+from .gateway import gateway_headers, gateway_ready, gateway_url
 
 
 def summarize(chunks):
-    endpoint, model = os.environ.get('SARA_LLM_URL'), os.environ.get('SARA_LLM_MODEL')
-    if not endpoint or not model:
+    model = os.environ.get('SARA_LLM_MODEL', '').strip()
+    if not gateway_ready() or not model:
         raise ValueError('El modelo de análisis no está configurado.')
     # A representative excerpt is bounded; the output must disclose its coverage.
     selected=[]
@@ -16,7 +17,7 @@ def summarize(chunks):
         if len(part)>budget:
             break
         selected.append(part);budget-=len(part)
-    response=httpx.post(endpoint,timeout=120,json={
+    response=httpx.post(gateway_url('chat/completions'),headers=gateway_headers(),timeout=120,json={
         'model':model,'stream':False,'response_format':{'type':'json_object'},
         'messages':[
             {'role':'system','content':'Resume en español los fragmentos proporcionados y sugiere una categoría temática breve. '
